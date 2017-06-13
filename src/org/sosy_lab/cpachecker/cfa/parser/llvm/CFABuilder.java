@@ -97,41 +97,42 @@ public class CFABuilder extends LlvmAstVisitor {
   }
 
   @Override
-  protected Behavior visitGlobalItem(final BasicBlock pItem) {
-    return Behavior.CONTINUE; // Parent will iterate through the statements of the block that way
-  }
-
-  @Override
-  protected Behavior visitInFunction(final BasicBlock pItem) {
-    return Behavior.CONTINUE; // Parent will iterate through the statements of the block that way
-  }
-
-  @Override
   protected Behavior visitInFunction(final Value pItem) {
-    if (pItem.isFunction()) { // Function definition
-      handleFunctionDefinition(pItem);
+    assert pItem.isFunction();
 
-    } else {
-      throw new AssertionError();
-    }
+    System.out.println("Creating function: " + pItem.getValueName());
+
+    FunctionEntryNode en = handleFunctionDefinition(pItem);
+    functions.put(pItem.getValueName(), en);
 
     return Behavior.CONTINUE;
   }
 
-  private void handleFunctionDefinition(final Value pFuncDef) {
-    assert pFuncDef.isFunction();
+  @Override
+  protected Behavior visitBasicBlock(final BasicBlock pItem) {
+    return Behavior.CONTINUE;
+  }
+
+  @Override
+  protected Behavior visitInstruction(final Value pItem) {
+    pItem.dumpValue();
+    return Behavior.CONTINUE;
+  }
+
+  private FunctionEntryNode handleFunctionDefinition(final Value pFuncDef) {
     TypeRef functionType = pFuncDef.typeOf();
     TypeRef returnType = functionType.getReturnType();
-
 
     CType cReturnType = getCType(returnType);
     CFunctionDeclaration functionDeclaration = null;
     FunctionExitNode functionExit = null;
     Optional<CVariableDeclaration> returnVar = null;
 
-
-
-    new CFunctionEntryNode(getLocation(pFuncDef), functionDeclaration, functionExit, returnVar);
+    /* FIXME
+    return new CFunctionEntryNode(getLocation(pFuncDef), functionDeclaration,
+                                  functionExit, returnVar);
+    */
+    return null;
   }
 
   private CType getCType(final TypeRef pReturnType) {
@@ -210,7 +211,7 @@ public class CFABuilder extends LlvmAstVisitor {
 
   @Override
   protected Behavior visitGlobalItem(final Value pItem) {
-    return null;
+    return Behavior.CONTINUE; // Parent will iterate through the statements of the block that way
   }
 
   public static class FunctionDefinition {

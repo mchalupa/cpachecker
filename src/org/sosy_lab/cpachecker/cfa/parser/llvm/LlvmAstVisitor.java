@@ -36,6 +36,7 @@ public abstract class LlvmAstVisitor {
   public enum Behavior { CONTINUE, STOP }
 
   public void visit(final Module pItem) {
+    /* no-op at this moment */
     Behavior behavior = visitModule(pItem);
     if (behavior == Behavior.STOP) {
       return;
@@ -43,86 +44,127 @@ public abstract class LlvmAstVisitor {
       assert behavior == Behavior.CONTINUE : "Unhandled behavior type " + behavior;
     }
 
+    /* create globals */
+    iterateOverGlobals(pItem);
+
+    /* create CFA for all functions */
+    iterateOverFunctions(pItem);
+  }
+
+  private void iterateOverGlobals(final Module pItem) {
     Value globalItem = pItem.getFirstGlobal();
-    while (globalItem != null) {
-      if (globalItem.isBasicBlock()) {
-        visitGlobal0(globalItem.asBasicBlock());
+    /* no globals? */
+    if (globalItem == null)
+      return;
+
+    Value globalItemLast = pItem.getLastGlobal();
+    assert globalItemLast != null;
+
+    while (true) {
+      Behavior behavior = visitGlobalItem(globalItem);
+      if (behavior == Behavior.CONTINUE) {
+        globalItem = globalItem.getNextGlobal();
 
       } else {
-        behavior = visitGlobalItem(globalItem);
-        if (behavior == Behavior.CONTINUE) {
-          globalItem = globalItem.getNextGlobal();
+        assert behavior == Behavior.STOP : "Unhandled behavior type " + behavior;
+        return;
+      }
 
-        } else {
-          assert behavior == Behavior.STOP : "Unhandled behavior type " + behavior;
-          return;
-        }
+      /* we processed the last global variable? */
+      if (globalItem == globalItemLast)
+        break;
+    }
+  }
+
+  private void iterateOverFunctions(final Module pItem) {
+    Value func = pItem.getFirstFunction();
+    if (func == null)
+      return;
+
+    Value funcLast = pItem.getFirstFunction();
+    assert funcLast != null;
+
+    while (true) {
+      /* skip declarations */
+      if (func.isDeclaration()) {
+        if (func == funcLast)
+          break;
+
+        func = func.getNextFunction();
+        continue;
+      }
+
+      Behavior behavior = visitInFunction(func);
+      if (behavior == Behavior.CONTINUE) {
+        handleBasicBlocks(func);
+
+        if (func == funcLast)
+          break;
+
+        func = func.getNextFunction();
+      } else {
+        assert behavior == Behavior.STOP : "Unhandled behavior type " + behavior;
+        return;
       }
     }
+  }
 
-    Value localItem = pItem.getFirstFunction();
-    while (localItem != null) {
-      if (localItem.isBasicBlock()) {
-        visitInFunction0(localItem.asBasicBlock());
+  private void handleBasicBlocks(final Value pItem) {
+    System.out.println("-- basic block --");
+    assert pItem.isFunction();
 
+    BasicBlock BB = pItem.getFirstBasicBlock();
+    if (BB == null)
+      return;
+
+    BasicBlock lastBB = pItem.getLastBasicBlock();
+    assert lastBB != null;
+
+    while (true) {
+      /* process this basic block */
+      Behavior behavior = visitBasicBlock(BB);
+      if (behavior == Behavior.CONTINUE) {
+        handleInstructions(BB);
+
+        /* did we processed all basic blocks? */
+        if (BB == lastBB)
+          break;
+
+        BB = BB.getNextBasicBlock();
       } else {
-        behavior = visitInFunction(localItem);
-        if (behavior == Behavior.CONTINUE) {
-          localItem = localItem.getNextFunction();
-
-        } else {
-          assert behavior == Behavior.STOP : "Unhandled behavior type " + behavior;
-          return;
-        }
+        assert behavior == Behavior.STOP : "Unhandled behavior type " + behavior;
+        return;
       }
     }
   }
 
-  private void visitGlobal0(final BasicBlock pItem) {
-    Behavior behavior = visitGlobalItem(pItem);
+  private void handleInstructions(final BasicBlock pItem) {
+    Value I = pItem.getFirstInstruction();
+    if (I == null)
+      return;
 
-    if (behavior == Behavior.CONTINUE) {
-      iterateOverItems(pItem, this::visitGlobalItem);
-    } else {
-      assert behavior == Behavior.STOP : "Unhandled behavior type " + behavior;
-    }
-  }
+    Value lastI = pItem.getLastInstruction();
+    assert lastI != null;
 
-  private void visitInFunction0(final BasicBlock pItem) {
-    Behavior behavior = visitInFunction(pItem);
+    while (true) {
+      /* process this basic block */
+      Behavior behavior = visitInstruction(I);
+      if (behavior == Behavior.CONTINUE) {
+        /* did we processed all basic blocks? */
+        if (I == lastI)
+          break;
 
-    if (behavior == Behavior.CONTINUE) {
-      iterateOverItems(pItem, this::visitInFunction);
-    } else {
-      assert behavior == Behavior.STOP : "Unhandled behavior type " + behavior;
-
-    }
-  }
-
-  private void iterateOverItems(final BasicBlock pItem, final Function<Value, Behavior> pVisitMethod) {
-    Behavior behavior;
-    Value nextInstr = pItem.getFirstInstruction();
-    while (nextInstr != null) {
-      if (nextInstr.isBasicBlock()) {
-        visitGlobal0(nextInstr.asBasicBlock());
-
+        I = I.getNextInstruction();
       } else {
-        behavior = pVisitMethod.apply(nextInstr);
-
-        if (behavior == Behavior.CONTINUE) {
-          nextInstr = nextInstr.getNextInstruction();
-
-        } else {
-          assert behavior == Behavior.STOP : "Unhandled behavior type " + behavior;
-          nextInstr = null;
-        }
+        assert behavior == Behavior.STOP : "Unhandled behavior type " + behavior;
+        return;
       }
     }
   }
 
   protected abstract Behavior visitModule(final Module pItem);
-  protected abstract Behavior visitGlobalItem(final BasicBlock pItem);
-  protected abstract Behavior visitInFunction(final BasicBlock pItem);
   protected abstract Behavior visitInFunction(final Value pItem);
+  protected abstract Behavior visitBasicBlock(final BasicBlock pItem);
+  protected abstract Behavior visitInstruction(final Value pItem);
   protected abstract Behavior visitGlobalItem(final Value pItem);
 }
