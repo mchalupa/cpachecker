@@ -32,6 +32,8 @@ import org.llvm.Module;
 import org.llvm.Value;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import org.sosy_lab.common.log.LogManager;
+import org.sosy_lab.cpachecker.cfa.ast.c.CAstNode;
 import org.sosy_lab.cpachecker.cfa.ast.c.CStatement;
 import org.sosy_lab.cpachecker.cfa.ast.c.CExpression;
 import org.sosy_lab.cpachecker.cfa.ast.c.CCharLiteralExpression;
@@ -65,7 +67,11 @@ public abstract class LlvmAstVisitor {
   protected SortedSetMultimap<String, CFANode> cfaNodes;
   protected List<Pair<ADeclaration, String>> globalDeclarations;
 
-  public LlvmAstVisitor() {
+  private final LogManager logger;
+
+  public LlvmAstVisitor(LogManager pLogger) {
+    logger = pLogger;
+
     basicBlockId = 0;
 
     functions = new TreeMap<>();
@@ -209,8 +215,9 @@ public abstract class LlvmAstVisitor {
     org.llvm.Function F = pItem.asFunction();
     for (BasicBlock BB : F) {
       Value terminatorInst = BB.getLastInstruction();
-      if (terminatorInst == null)
+      if (terminatorInst == null) {
         continue;
+      }
 
       assert terminatorInst.isTerminatorInst();
       CFANode brNode = basicBlocks.get(BB.getAddress()).getExitNode();
@@ -273,7 +280,7 @@ public abstract class LlvmAstVisitor {
 
     for (Value I : pItem) {
       // process this basic block
-      CStatement expr = visitInstruction(I);
+      CAstNode expr = visitInstruction(I, funcName);
 
       // build an edge with this expression over it
       // TODO -- FIXME
@@ -311,6 +318,7 @@ public abstract class LlvmAstVisitor {
   }
 
   protected abstract FunctionEntryNode visitFunction(final Value pItem);
-  protected abstract CStatement visitInstruction(final Value pItem);
+  protected abstract CAstNode visitInstruction(Value pItem, String pFunctionName);
+
   protected abstract Behavior visitGlobalItem(final Value pItem);
 }
