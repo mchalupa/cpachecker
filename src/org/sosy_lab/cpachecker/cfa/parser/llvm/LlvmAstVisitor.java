@@ -118,13 +118,22 @@ public abstract class LlvmAstVisitor {
   }
 
   private void iterateOverFunctions(final Module pItem) {
-    if (pItem.getFirstFunction() == null)
-      return; // module is empty
+    Value func = pItem.getFirstFunction();
+    if (func == null)
+      return;
 
-    for (Value func : pItem) {
+    Value funcLast = pItem.getFirstFunction();
+    assert funcLast != null;
+
+    while (true) {
       // skip declarations
-      if (func.isDeclaration())
+      if (func.isDeclaration()) {
+        if (func.equals(funcLast))
+          break;
+
+        func = func.getNextFunction();
         continue;
+      }
 
       String funcName = func.getValueName();
       assert !funcName.isEmpty();
@@ -155,6 +164,12 @@ public abstract class LlvmAstVisitor {
       }
 
       functions.put(funcName, en);
+
+      // process the next function
+      if (func.equals(funcLast))
+        break;
+
+      func = func.getNextFunction();
     }
   }
 
@@ -184,9 +199,6 @@ public abstract class LlvmAstVisitor {
       addNode(funcName, label);
       if (entryBB == null)
         entryBB = label;
-
-      // FIXME: handle empty basic blocks
-      assert BB.getFirstInstruction() != null;
 
       BasicBlockInfo bbi = handleInstructions(funcName, BB);
       basicBlocks.put(BB.getAddress(), new BasicBlockInfo(label, bbi.getExitNode()));
@@ -291,16 +303,23 @@ public abstract class LlvmAstVisitor {
   }
 
   /**
-   * Create a chain of nodes and edges corresponding to a basic block.
+   * Create a chain of nodes and edges corresponding to one basic block.
    */
-  private BasicBlockInfo handleInstructions(final String funcName, final BasicBlock pItem) {
+  private BasicBlockInfo handleInstructions(String funcName, final BasicBlock pItem) {
+    Value I = pItem.getFirstInstruction();
+    if (I == null)
+      return null;
+
+    Value lastI = pItem.getLastInstruction();
+    assert lastI != null;
+
     CFANode prevNode = new CFANode(funcName);
     CFANode firstNode = prevNode;
     CFANode curNode = new CFANode(funcName);
     addNode(funcName, prevNode);
     addNode(funcName, curNode);
 
-    for (Value I : pItem) {
+    while (true) {
       // process this basic block
       CStatement expr = visitInstruction(I);
 
@@ -308,6 +327,12 @@ public abstract class LlvmAstVisitor {
       // TODO -- FIXME
       addEdge(new BlankEdge("op", FileLocation.DUMMY,
                             prevNode, curNode, I.toString()));
+
+      // did we processed all instructions in this basic block?
+      if (I.equals(lastI))
+        break;
+
+      I = I.getNextInstruction();
 
       prevNode = curNode;
       curNode = new CFANode(funcName);
