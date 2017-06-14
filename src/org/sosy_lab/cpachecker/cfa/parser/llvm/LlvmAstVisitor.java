@@ -34,9 +34,12 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 import org.sosy_lab.cpachecker.cfa.ast.c.CStatement;
 import org.sosy_lab.cpachecker.cfa.ast.c.CExpression;
+import org.sosy_lab.cpachecker.cfa.ast.c.CCharLiteralExpression;
 import org.sosy_lab.cpachecker.cfa.ast.ADeclaration;
 import org.sosy_lab.cpachecker.cfa.ast.FileLocation;
 import org.sosy_lab.cpachecker.cfa.ast.c.CStatement;
+import org.sosy_lab.cpachecker.cfa.types.c.CBasicType;
+import org.sosy_lab.cpachecker.cfa.types.c.CSimpleType;
 import org.sosy_lab.cpachecker.cfa.model.CFANode;
 import org.sosy_lab.cpachecker.cfa.model.CFAEdge;
 import org.sosy_lab.cpachecker.cfa.model.FunctionEntryNode;
@@ -156,7 +159,6 @@ public abstract class LlvmAstVisitor {
       // lead every termination node to the one unified termination node of the CFA
       CFANode exitNode = en.getExitNode();
       for (CFANode n : termnodes) {
-        System.out.println("Got termnode in func " + funcName);
         addEdge(new BlankEdge("to_exit", FileLocation.DUMMY,
                               n, exitNode, "Unified exit edge"));
       }
@@ -265,16 +267,19 @@ public abstract class LlvmAstVisitor {
         CLabelNode label = (CLabelNode)basicBlocks.get(succ.getAddress()).getEntryNode();
 
         // FIXME
-        /*
-        CExpression expr = null;
+        CExpression expr = new CCharLiteralExpression(
+          FileLocation.DUMMY,
+          new CSimpleType(
+              false, false,
+              CBasicType.CHAR,
+              false, false, false,
+              true,
+              false, false, false),
+          (char) i
+        );
 
-        addEdge(new CAssumeEdge("T", FileLocation.DUMMY,
-                        brNode, (CFANode)label, expr, true));
-        */
-
-        // FIXME
-        addEdge(new BlankEdge("?", FileLocation.DUMMY,
-                               brNode, (CFANode)label, Integer.toString(i)));
+        addEdge(new CAssumeEdge("?", FileLocation.DUMMY,
+                        brNode, (CFANode)label, expr, false));
       }
 
       // did we processed all basic blocks?
