@@ -63,16 +63,16 @@ public abstract class LlvmAstVisitor {
     while (true) {
       Behavior behavior = visitGlobalItem(globalItem);
       if (behavior == Behavior.CONTINUE) {
+        /* we processed the last global variable? */
+        if (globalItem.equals(globalItemLast))
+          break;
+
         globalItem = globalItem.getNextGlobal();
 
       } else {
         assert behavior == Behavior.STOP : "Unhandled behavior type " + behavior;
         return;
       }
-
-      /* we processed the last global variable? */
-      if (globalItem == globalItemLast)
-        break;
     }
   }
 
@@ -87,7 +87,7 @@ public abstract class LlvmAstVisitor {
     while (true) {
       /* skip declarations */
       if (func.isDeclaration()) {
-        if (func == funcLast)
+        if (func.equals(funcLast))
           break;
 
         func = func.getNextFunction();
@@ -98,7 +98,7 @@ public abstract class LlvmAstVisitor {
       if (behavior == Behavior.CONTINUE) {
         handleBasicBlocks(func);
 
-        if (func == funcLast)
+        if (func.equals(funcLast))
           break;
 
         func = func.getNextFunction();
@@ -110,7 +110,6 @@ public abstract class LlvmAstVisitor {
   }
 
   private void handleBasicBlocks(final Value pItem) {
-    System.out.println("-- basic block --");
     assert pItem.isFunction();
 
     BasicBlock BB = pItem.getFirstBasicBlock();
@@ -127,7 +126,7 @@ public abstract class LlvmAstVisitor {
         handleInstructions(BB);
 
         /* did we processed all basic blocks? */
-        if (BB == lastBB)
+        if (BB.equals(lastBB))
           break;
 
         BB = BB.getNextBasicBlock();
@@ -151,7 +150,7 @@ public abstract class LlvmAstVisitor {
       Behavior behavior = visitInstruction(I);
       if (behavior == Behavior.CONTINUE) {
         /* did we processed all basic blocks? */
-        if (I == lastI)
+        if (I.equals(lastI))
           break;
 
         I = I.getNextInstruction();
