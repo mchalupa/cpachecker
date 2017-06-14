@@ -23,36 +23,24 @@
  */
 package org.sosy_lab.cpachecker.cfa.parser.llvm;
 
-import ap.interpolants.StructuredPrograms.Assertion;
-import com.google.common.base.Optional;
 import com.google.common.collect.SortedSetMultimap;
 import com.google.common.collect.TreeMultimap;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import org.bridj.IntValuedEnum;
-import org.llvm.BasicBlock;
+import java.util.logging.Level;
 import org.llvm.Module;
 import org.llvm.TypeRef;
 import org.llvm.Value;
-import org.llvm.binding.LLVMLibrary.LLVMTypeKind;
-import org.matheclipse.core.reflection.system.Mod;
 import org.sosy_lab.common.log.LogManager;
 import org.sosy_lab.cpachecker.cfa.Language;
 import org.sosy_lab.cpachecker.cfa.ParseResult;
 import org.sosy_lab.cpachecker.cfa.ast.ADeclaration;
 import org.sosy_lab.cpachecker.cfa.ast.FileLocation;
 import org.sosy_lab.cpachecker.cfa.ast.c.CStatement;
-import org.sosy_lab.cpachecker.cfa.ast.c.CFunctionDeclaration;
-import org.sosy_lab.cpachecker.cfa.ast.c.CVariableDeclaration;
-import org.sosy_lab.cpachecker.cfa.model.FunctionExitNode;
-import org.sosy_lab.cpachecker.cfa.model.c.CFunctionEntryNode;
-import org.sosy_lab.cpachecker.cfa.model.c.CLabelNode;
+import org.sosy_lab.cpachecker.cfa.model.CFANode;
+import org.sosy_lab.cpachecker.cfa.model.FunctionEntryNode;
 import org.sosy_lab.cpachecker.cfa.types.MachineModel;
-import org.sosy_lab.cpachecker.cfa.types.c.CBasicType;
-import org.sosy_lab.cpachecker.cfa.types.c.CSimpleType;
-import org.sosy_lab.cpachecker.cfa.types.c.CType;
-import org.sosy_lab.cpachecker.cfa.types.c.CVoidType;
+import org.sosy_lab.cpachecker.cfa.types.c.CFunctionType;
 import org.sosy_lab.cpachecker.util.Pair;
 import org.sosy_lab.cpachecker.cfa.model.CFANode;
 import org.sosy_lab.cpachecker.cfa.model.FunctionEntryNode;
@@ -72,12 +60,17 @@ public class CFABuilder extends LlvmAstVisitor {
 
   private final LogManager logger;
   private final MachineModel machineModel;
+
+  private final LlvmTypeConverter typeConverter;
+
   private SortedSetMultimap<String, CFANode> cfaNodes;
   private List<Pair<ADeclaration, String>> globalDeclarations;
 
   public CFABuilder(final LogManager pLogger, final MachineModel pMachineModel) {
     logger = pLogger;
     machineModel = pMachineModel;
+
+    typeConverter = new LlvmTypeConverter(pMachineModel, pLogger);
 
     cfaNodes = TreeMultimap.create();
     globalDeclarations = new ArrayList<>();
@@ -93,7 +86,7 @@ public class CFABuilder extends LlvmAstVisitor {
   protected FunctionEntryNode visitFunction(final Value pItem) {
     assert pItem.isFunction();
 
-    System.out.println("Creating function: " + pItem.getValueName());
+    logger.log(Level.INFO, "Creating function: " + pItem.getValueName());
 
     return handleFunctionDefinition(pItem);
   }
@@ -107,120 +100,27 @@ public class CFABuilder extends LlvmAstVisitor {
 
   private FunctionEntryNode handleFunctionDefinition(final Value pFuncDef) {
     TypeRef functionType = pFuncDef.typeOf();
-    TypeRef returnType = functionType.getReturnType();
 
-    CType cReturnType = getCType(returnType);
-    CFunctionDeclaration functionDeclaration = null;
+    CFunctionType cFuncType = (CFunctionType) typeConverter.getCType(functionType);
+
+    /* FIXME
+    List<CParameterDeclaration> parameters = null; // FIXME
+    CFunctionDeclaration functionDeclaration = new CFunctionDeclaration(
+        getLocation(pFuncDef),
+        cFuncType,
+        pFuncDef.getValueName(),
+        parameters);
     FunctionExitNode functionExit = null;
     Optional<CVariableDeclaration> returnVar = null;
 
-    /* FIXME
-    return new CFunctionEntryNode(getLocation(pFuncDef), functionDeclaration,
-                                  functionExit, returnVar);
+    return new CFunctionEntryNode(getLocation(pFuncDef), functionDeclaration, functionExit, returnVar);
     */
     return null;
-  }
-
-  private CType getCType(final TypeRef pReturnType) {
-    CType cType = null; // FIXME
-    final boolean isConst = false;
-    final boolean isVolatile = false;
-
-    IntValuedEnum<LLVMTypeKind> typeKind = pReturnType.getTypeKind();
-    long tk = typeKind.value();
-
-    if (tk == LLVMTypeKind.LLVMVoidTypeKind.value()) {
-      return CVoidType.VOID;
-    } else if (tk == LLVMTypeKind.LLVMIntegerTypeKind.value()) {
-      int integerWidth = pReturnType.getIntTypeWidth();
-      return getIntegerType(integerWidth, isConst, isVolatile);
-
-    } else if (tk == LLVMTypeKind.LLVMFloatTypeKind.value()
-        || tk == LLVMTypeKind.LLVMDoubleTypeKind.value()) {
-      // TODO
-    } else if (tk == LLVMTypeKind.LLVMArrayTypeKind.value()) {
-
-    }
-    return cType;
-  }
-
-  private CType getIntegerType(
-      final int pIntegerWidth,
-      final boolean pIsConst,
-      final boolean pIsVolatile
-  ) {
-    final boolean isSigned = false;
-    final boolean isComplex = false;
-    final boolean isImaginary = false;
-    final boolean isUnsigned = true;
-
-    final boolean isLong = false;
-    boolean isShort = false;
-    boolean isLonglong = false;
-
-    CBasicType basicType;
-
-    switch (pIntegerWidth) {
-      case 1:
-        basicType = CBasicType.BOOL;
-        break;
-      case 2:
-        basicType = CBasicType.INT;
-        isShort = true;
-        break;
-      case 4:
-        basicType = CBasicType.INT;
-        // keep everything set to 'false' for default int
-        break;
-      case 8:
-        basicType = CBasicType.INT;
-        // We use long long since it is 8 bytes for both 32 and 64 bit machines
-        isLonglong = true;
-        break;
-      default:
-        throw new AssertionError("Unhandled integer bitwidth " + pIntegerWidth);
-    }
-
-    return new CSimpleType(
-        pIsConst,
-        pIsVolatile,
-        basicType,
-        isLong,
-        isShort,
-        isSigned,
-        isUnsigned,
-        isComplex,
-        isImaginary,
-        isLonglong
-        );
   }
 
   @Override
   protected Behavior visitGlobalItem(final Value pItem) {
     return Behavior.CONTINUE; // Parent will iterate through the statements of the block that way
-  }
-
-  public static class FunctionDefinition {
-
-    private CFunctionDeclaration funcDecl;
-    private CFunctionEntryNode entryNode;
-
-    public FunctionDefinition(
-        final CFunctionDeclaration pFuncDecl,
-        final CFunctionEntryNode pEntryNode
-    ) {
-      funcDecl = pFuncDecl;
-      entryNode = pEntryNode;
-    }
-
-    public CFunctionEntryNode getEntryNode() {
-      return entryNode;
-    }
-
-    public void setEntryNode(final CFunctionEntryNode pEntryNode) {
-      entryNode = pEntryNode;
-    }
-
   }
 
   private FileLocation getLocation(final Value pItem) {

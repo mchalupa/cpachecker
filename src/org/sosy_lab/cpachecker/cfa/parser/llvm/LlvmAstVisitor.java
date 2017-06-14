@@ -23,6 +23,10 @@
  */
 package org.sosy_lab.cpachecker.cfa.parser.llvm;
 
+import org.llvm.BasicBlock;
+import org.llvm.Module;
+import org.llvm.Value;
+import org.sosy_lab.cpachecker.cfa.ast.c.CStatement;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import org.sosy_lab.cpachecker.cfa.model.CFANode;
