@@ -30,8 +30,6 @@ import com.google.common.collect.TreeMultimap;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.SortedMap;
-import java.util.TreeMap;
 import org.bridj.IntValuedEnum;
 import org.llvm.BasicBlock;
 import org.llvm.Module;
@@ -44,18 +42,20 @@ import org.sosy_lab.cpachecker.cfa.Language;
 import org.sosy_lab.cpachecker.cfa.ParseResult;
 import org.sosy_lab.cpachecker.cfa.ast.ADeclaration;
 import org.sosy_lab.cpachecker.cfa.ast.FileLocation;
+import org.sosy_lab.cpachecker.cfa.ast.c.CStatement;
 import org.sosy_lab.cpachecker.cfa.ast.c.CFunctionDeclaration;
 import org.sosy_lab.cpachecker.cfa.ast.c.CVariableDeclaration;
-import org.sosy_lab.cpachecker.cfa.model.CFANode;
-import org.sosy_lab.cpachecker.cfa.model.FunctionEntryNode;
 import org.sosy_lab.cpachecker.cfa.model.FunctionExitNode;
 import org.sosy_lab.cpachecker.cfa.model.c.CFunctionEntryNode;
+import org.sosy_lab.cpachecker.cfa.model.c.CLabelNode;
 import org.sosy_lab.cpachecker.cfa.types.MachineModel;
 import org.sosy_lab.cpachecker.cfa.types.c.CBasicType;
 import org.sosy_lab.cpachecker.cfa.types.c.CSimpleType;
 import org.sosy_lab.cpachecker.cfa.types.c.CType;
 import org.sosy_lab.cpachecker.cfa.types.c.CVoidType;
 import org.sosy_lab.cpachecker.util.Pair;
+import org.sosy_lab.cpachecker.cfa.model.CFANode;
+import org.sosy_lab.cpachecker.cfa.model.FunctionEntryNode;
 
 /**
  * CFA builder for LLVM IR.
@@ -72,7 +72,6 @@ public class CFABuilder extends LlvmAstVisitor {
 
   private final LogManager logger;
   private final MachineModel machineModel;
-  private SortedMap<String, FunctionEntryNode> functions;
   private SortedSetMultimap<String, CFANode> cfaNodes;
   private List<Pair<ADeclaration, String>> globalDeclarations;
 
@@ -80,7 +79,6 @@ public class CFABuilder extends LlvmAstVisitor {
     logger = pLogger;
     machineModel = pMachineModel;
 
-    functions = new TreeMap<>();
     cfaNodes = TreeMultimap.create();
     globalDeclarations = new ArrayList<>();
   }
@@ -92,31 +90,19 @@ public class CFABuilder extends LlvmAstVisitor {
   }
 
   @Override
-  protected Behavior visitModule(final Module pItem) {
-    return Behavior.CONTINUE; // Parent will go inside the global variables and blocks that way
-  }
-
-  @Override
-  protected Behavior visitInFunction(final Value pItem) {
+  protected FunctionEntryNode visitFunction(final Value pItem) {
     assert pItem.isFunction();
 
     System.out.println("Creating function: " + pItem.getValueName());
 
-    FunctionEntryNode en = handleFunctionDefinition(pItem);
-    functions.put(pItem.getValueName(), en);
-
-    return Behavior.CONTINUE;
+    return handleFunctionDefinition(pItem);
   }
 
   @Override
-  protected Behavior visitBasicBlock(final BasicBlock pItem) {
-    return Behavior.CONTINUE;
-  }
-
-  @Override
-  protected Behavior visitInstruction(final Value pItem) {
+  protected CStatement visitInstruction(final Value pItem) {
     pItem.dumpValue();
-    return Behavior.CONTINUE;
+    // TODO
+    return null;
   }
 
   private FunctionEntryNode handleFunctionDefinition(final Value pFuncDef) {
