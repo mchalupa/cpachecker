@@ -180,7 +180,6 @@ public class CFABuilder extends LlvmAstVisitor {
       return handleCall(pItem, pFunctionName);
     } else if (pItem.isCmpInst()) {
       return handleCmpInst(pItem, pFunctionName);
-      return null;
     } else if (pItem.isSwitchInst()) {
 
       throw new UnsupportedOperationException();
@@ -662,7 +661,7 @@ public class CFABuilder extends LlvmAstVisitor {
         RETURN_VAR_NAME, getQualifiedName(RETURN_VAR_NAME, pFunctionName), null /* no initializer */);
   }
 
-  private CAstNode handleCmpInst(final Value pItem, String pFunctionName) {
+  private List<CAstNode> handleCmpInst(final Value pItem, String pFunctionName) {
     // the only one supported now
     assert pItem.isICmpInst();
 
@@ -703,9 +702,8 @@ public class CFABuilder extends LlvmAstVisitor {
         getExpression(operand2, pFunctionName),
         operator);
 
-      return ImmutableList.of(new CExpressionAssignmentStatement(getLocation(pItem),
-                                      getAssignedIdExpression(pItem, pFunctionName),
-                                      cmp));
+      return getAssignStatement(pItem, cmp, pFunctionName);
+
     } catch (UnrecognizedCCodeException e) {
         throw new UnsupportedOperationException(e.toString());
     }

@@ -104,7 +104,7 @@ public abstract class LlvmAstVisitor {
 
     while (true) {
       ADeclaration decl = visitGlobalItem(globalItem);
-      globalDeclarations.add(Pair.of(decl, globalItem.toString()));
+      //globalDeclarations.add(Pair.of(decl, globalItem.toString()));
 
       /* we processed the last global variable? */
       if (globalItem.equals(globalItemLast))
@@ -282,14 +282,17 @@ public abstract class LlvmAstVisitor {
 
       // process this basic block
       List<CAstNode> expressions = visitInstruction(I, funcName);
+      if (expressions == null) {
+        curNode = newNode(funcName);
+        addEdge(new BlankEdge(I.toString(), FileLocation.DUMMY,
+                             prevNode, curNode, "(noop)"));
+        prevNode = curNode;
+        continue;
+      }
 
       for (CAstNode expr : expressions) {
         // build an edge with this expression over it
-        if (expr == null) {
-         curNode = newNode(funcName);
-         addEdge(new BlankEdge(I.toString(), FileLocation.DUMMY,
-                              prevNode, curNode, "(noop)"));
-        } else if (expr instanceof CDeclaration) {
+        if (expr instanceof CDeclaration) {
          curNode = newNode(funcName);
          addEdge(new CDeclarationEdge(expr.toASTString(), FileLocation.DUMMY,
                                       prevNode, curNode,
