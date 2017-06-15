@@ -32,7 +32,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
-import net.jcip.annotations.Immutable;
 import org.llvm.Module;
 import org.llvm.TypeRef;
 import org.llvm.Value;
@@ -40,13 +39,14 @@ import org.llvm.binding.LLVMLibrary.LLVMOpcode;
 import org.sosy_lab.common.log.LogManager;
 import org.sosy_lab.cpachecker.cfa.Language;
 import org.sosy_lab.cpachecker.cfa.ParseResult;
-import org.sosy_lab.cpachecker.cfa.ast.FileLocation;
 import org.sosy_lab.cpachecker.cfa.ast.ADeclaration;
+import org.sosy_lab.cpachecker.cfa.ast.FileLocation;
 import org.sosy_lab.cpachecker.cfa.ast.c.CAssignment;
 import org.sosy_lab.cpachecker.cfa.ast.c.CAstNode;
-import org.sosy_lab.cpachecker.cfa.ast.c.CCastExpression;
 import org.sosy_lab.cpachecker.cfa.ast.c.CBinaryExpression;
 import org.sosy_lab.cpachecker.cfa.ast.c.CBinaryExpression.BinaryOperator;
+import org.sosy_lab.cpachecker.cfa.ast.c.CBinaryExpressionBuilder;
+import org.sosy_lab.cpachecker.cfa.ast.c.CCastExpression;
 import org.sosy_lab.cpachecker.cfa.ast.c.CExpression;
 import org.sosy_lab.cpachecker.cfa.ast.c.CExpressionAssignmentStatement;
 import org.sosy_lab.cpachecker.cfa.ast.c.CExpressionStatement;
@@ -58,13 +58,15 @@ import org.sosy_lab.cpachecker.cfa.ast.c.CIdExpression;
 import org.sosy_lab.cpachecker.cfa.ast.c.CInitializer;
 import org.sosy_lab.cpachecker.cfa.ast.c.CInitializerExpression;
 import org.sosy_lab.cpachecker.cfa.ast.c.CIntegerLiteralExpression;
+import org.sosy_lab.cpachecker.cfa.ast.c.CLeftHandSide;
 import org.sosy_lab.cpachecker.cfa.ast.c.CParameterDeclaration;
+import org.sosy_lab.cpachecker.cfa.ast.c.CPointerExpression;
 import org.sosy_lab.cpachecker.cfa.ast.c.CReturnStatement;
 import org.sosy_lab.cpachecker.cfa.ast.c.CRightHandSide;
 import org.sosy_lab.cpachecker.cfa.ast.c.CSimpleDeclaration;
-import org.sosy_lab.cpachecker.cfa.ast.c.CStatement;
+import org.sosy_lab.cpachecker.cfa.ast.c.CUnaryExpression;
+import org.sosy_lab.cpachecker.cfa.ast.c.CUnaryExpression.UnaryOperator;
 import org.sosy_lab.cpachecker.cfa.ast.c.CVariableDeclaration;
-import org.sosy_lab.cpachecker.cfa.ast.c.CBinaryExpressionBuilder;
 import org.sosy_lab.cpachecker.cfa.model.FunctionEntryNode;
 import org.sosy_lab.cpachecker.cfa.model.FunctionExitNode;
 import org.sosy_lab.cpachecker.cfa.model.c.CFunctionEntryNode;
@@ -72,12 +74,11 @@ import org.sosy_lab.cpachecker.cfa.types.MachineModel;
 import org.sosy_lab.cpachecker.cfa.types.c.CBasicType;
 import org.sosy_lab.cpachecker.cfa.types.c.CFunctionType;
 import org.sosy_lab.cpachecker.cfa.types.c.CNumericTypes;
+import org.sosy_lab.cpachecker.cfa.types.c.CPointerType;
 import org.sosy_lab.cpachecker.cfa.types.c.CSimpleType;
 import org.sosy_lab.cpachecker.cfa.types.c.CStorageClass;
 import org.sosy_lab.cpachecker.cfa.types.c.CType;
 import org.sosy_lab.cpachecker.cfa.types.c.CVoidType;
-import org.sosy_lab.cpachecker.cfa.model.CFANode;
-import org.sosy_lab.cpachecker.cfa.model.FunctionEntryNode;
 import org.sosy_lab.cpachecker.exceptions.UnrecognizedCCodeException;
 
 /**
@@ -148,8 +149,9 @@ public class CFABuilder extends LlvmAstVisitor {
   protected CExpression getBranchCondition(final Value pItem, String funcName) {
     Value cond = pItem.getCondition();
     try {
+      CType expectedType = typeConverter.getCType(cond.typeOf());
       return binaryExpressionBuilder.buildBinaryExpression(
-        getExpression(cond, funcName),
+        getExpression(cond, expectedType, funcName),
         new CIntegerLiteralExpression(
             getLocation(pItem),
             CNumericTypes.BOOL,
@@ -229,12 +231,16 @@ public class CFABuilder extends LlvmAstVisitor {
           new CIdExpression(loc, functionDeclaration.getType(), functionName, functionDeclaration);
     }
 
+    List<CParameterDeclaration> parameterDeclarations = functionDeclaration.getParameters();
     List<CExpression> parameters = new ArrayList<>(argumentCount);
     // i = 1 to skip the function name, we only want to look at arguments
     for (int i = 1; i < argumentCount; i++) {
       Value functionArg = pItem.getOperand(i);
+      // Parameter declarations start at 0, not 1, so we have to subtract 1 again
+      CType expectedType = parameterDeclarations.get(i-1).getType();
+
       assert functionArg.isConstant() || variableDeclarations.containsKey(functionArg.getAddress());
-      parameters.add(getAssignedIdExpression(functionArg, pFunctionName));
+      parameters.add(getAssignedIdExpression(functionArg, expectedType, pFunctionName));
     }
 
     CFunctionCallExpression callExpression = new CFunctionCallExpression(loc, returnType,
@@ -267,15 +273,19 @@ public class CFABuilder extends LlvmAstVisitor {
   }
 
   private List<CAstNode> handleLoad(final Value pItem, final String pFunctionName) {
-    CExpression expression = getAssignedIdExpression(pItem.getOperand(0), pFunctionName);
+    CType expectedType = typeConverter.getCType(pItem.typeOf());
+    CExpression expression = getAssignedIdExpression(pItem.getOperand(0), expectedType, pFunctionName);
     return getAssignStatement(pItem, expression, pFunctionName);
   }
 
   private List<CAstNode> handleStore(final Value pItem, final String pFunctionName) {
-    CIdExpression assignee = getAssignedIdExpression(pItem.getOperand(1), pFunctionName);
-    CExpression expression = getExpression(pItem.getOperand(0), pFunctionName);
-    return ImmutableList.of(
-        new CExpressionAssignmentStatement(getLocation(pItem), assignee, expression));
+    Value valueToStoreTo = pItem.getOperand(1);
+    Value valueToLoad = pItem.getOperand(0);
+
+    CType expectedType = typeConverter.getCType(valueToLoad.typeOf());
+    CExpression expression = getExpression(valueToLoad, expectedType, pFunctionName);
+
+    return getAssignStatement(valueToStoreTo, expression, pFunctionName);
   }
 
   private List<CAstNode> handleAlloca(final Value pItem, String pFunctionName) {
@@ -293,7 +303,8 @@ public class CFABuilder extends LlvmAstVisitor {
       maybeAssignment = Optional.absent();
 
     } else {
-      CExpression returnExp = getExpression(returnVal, pFuncName);
+      CType expectedType = typeConverter.getCType(returnVal.typeOf());
+      CExpression returnExp = getExpression(returnVal, expectedType, pFuncName);
       maybeExpression = Optional.of(returnExp);
 
       CSimpleDeclaration returnVarDecl = getReturnVar(pFuncName, returnExp.getExpressionType());
@@ -427,10 +438,12 @@ public class CFABuilder extends LlvmAstVisitor {
     // in the future.
     Value operand1 = pItem.getOperand(0); // First operand
     logger.log(Level.INFO, "Getting id expression for operand 1");
-    CExpression operand1Exp = getExpression(operand1, pFunctionName);
+    CType op1type = typeConverter.getCType(operand1.typeOf());
+    CExpression operand1Exp = getExpression(operand1, op1type, pFunctionName);
     Value operand2 = pItem.getOperand(1); // Second operand
+    CType op2type = typeConverter.getCType(operand2.typeOf());
     logger.log(Level.INFO, "Getting id expression for operand 2");
-    CExpression operand2Exp = getExpression(operand2, pFunctionName);
+    CExpression operand2Exp = getExpression(operand2, op2type, pFunctionName);
 
     CBinaryExpression.BinaryOperator operation;
     switch (pOpCode) {
@@ -491,20 +504,22 @@ public class CFABuilder extends LlvmAstVisitor {
     return getAssignStatement(pItem, expression, pFunctionName);
   }
 
-  private CExpression getExpression(final Value pItem, final String pFunctionName) {
+  private CExpression getExpression(
+      final Value pItem, final CType pExpectedType, final String pFunctionName) {
     if (pItem.isConstantInt() || pItem.isConstantFP()) {
       return getConstant(pItem);
     } else {
-      return getAssignedIdExpression(pItem, pFunctionName);
+      return getAssignedIdExpression(pItem, pExpectedType, pFunctionName);
     }
   }
 
   private CExpression getConstant(final Value pItem) {
+    CType expectedType = typeConverter.getCType(pItem.typeOf());
     if (pItem.isConstantInt()) {
       long constantValue = pItem.constIntGetSExtValue();
       return new CIntegerLiteralExpression(
           getLocation(pItem),
-          CNumericTypes.LONG_LONG_INT,
+          expectedType,
           BigInteger.valueOf(constantValue));
     } else {
       assert pItem.isConstantFP();
@@ -518,9 +533,18 @@ public class CFABuilder extends LlvmAstVisitor {
       final String pFunctionName
   ) {
     long assigneeId = pAssignee.getAddress();
+    CType expectedType = pAssignment.getExpressionType();
     // Variable is already declared, so it must only be assigned the new value
     if (variableDeclarations.containsKey(assigneeId)) {
-      CIdExpression assigneeIdExp = getAssignedIdExpression(pAssignee, pFunctionName);
+      CLeftHandSide assigneeIdExp = (CLeftHandSide) getAssignedIdExpression(pAssignee,
+          expectedType, pFunctionName);
+
+      CType varType = assigneeIdExp.getExpressionType();
+      if (!(varType.equals(expectedType))) {
+        assert expectedType instanceof CPointerType;
+        assigneeIdExp = new CPointerExpression(getLocation(pAssignee), varType, assigneeIdExp);
+      }
+
       if (pAssignment instanceof CFunctionCallExpression) {
         return ImmutableList.of(new CFunctionCallAssignmentStatement(
             getLocation(pAssignee),
@@ -539,7 +563,8 @@ public class CFABuilder extends LlvmAstVisitor {
       if (pAssignment instanceof CFunctionCallExpression) {
         CSimpleDeclaration assigneeDecl =
             getAssignedVarDeclaration(pAssignee, pFunctionName, null);
-        CIdExpression assigneeIdExp = getAssignedIdExpression(pAssignee, pFunctionName);
+        CLeftHandSide assigneeIdExp =
+            (CLeftHandSide) getAssignedIdExpression(pAssignee, expectedType, pFunctionName);
 
         return ImmutableList.of(
             assigneeDecl,
@@ -601,7 +626,8 @@ public class CFABuilder extends LlvmAstVisitor {
   }
 
 
-  private CIdExpression getAssignedIdExpression(final Value pItem, final String pFunctionName) {
+  private CExpression getAssignedIdExpression(final Value pItem, final CType pExpectedType,
+                                              final String pFunctionName) {
     logger.log(Level.INFO, "Getting var declaration for item");
     pItem.dumpValue();
     assert variableDeclarations.containsKey(pItem.getAddress())
@@ -610,9 +636,25 @@ public class CFABuilder extends LlvmAstVisitor {
         variableDeclarations.get(pItem.getAddress());
     String assignedVarName = assignedVarDeclaration.getName();
     CType expressionType = assignedVarDeclaration.getType();
-
-    return new CIdExpression(
+    CIdExpression idExpression = new CIdExpression(
         getLocation(pItem), expressionType, assignedVarName, assignedVarDeclaration);
+
+    if (pExpectedType.equals(expressionType)) {
+      return idExpression;
+
+    } else if (pExpectedType instanceof CPointerType) {
+      CType typePointingTo = ((CPointerType) pExpectedType).getType();
+      if (typePointingTo.equals(expressionType)) {
+        return new CUnaryExpression(
+            getLocation(pItem), pExpectedType, idExpression, UnaryOperator.AMPER);
+      } else {
+        throw new AssertionError("Unhandled type structure");
+      }
+    } else if (expressionType instanceof CPointerType) {
+      return new CPointerExpression(getLocation(pItem), pExpectedType, idExpression);
+    } else {
+      throw new AssertionError("Unhandled types structure");
+    }
   }
 
   private String getTempVar() {
@@ -730,11 +772,12 @@ public class CFABuilder extends LlvmAstVisitor {
     assert operator != null;
     Value operand1 = pItem.getOperand(0);
     Value operand2 = pItem.getOperand(1);
-
+    CType op1type = typeConverter.getCType(operand1.typeOf());
+    CType op2type = typeConverter.getCType(operand2.typeOf());
     try {
       CBinaryExpression cmp = binaryExpressionBuilder.buildBinaryExpression(
-        getExpression(operand1, pFunctionName),
-        getExpression(operand2, pFunctionName),
+        getExpression(operand1, op1type, pFunctionName),
+        getExpression(operand2, op2type, pFunctionName),
         operator);
 
       return getAssignStatement(pItem, cmp, pFunctionName);
@@ -745,9 +788,11 @@ public class CFABuilder extends LlvmAstVisitor {
   }
 
   private List<CAstNode> handleCastInst(final Value pItem, String pFunctionName) {
+    Value castOperand = pItem.getOperand(0);
+    CType operandType = typeConverter.getCType(castOperand.typeOf());
     CCastExpression cast = new CCastExpression(getLocation(pItem),
                                                typeConverter.getCType(pItem.typeOf()),
-                                               getExpression(pItem.getOperand(0), pFunctionName));
+                                               getExpression(castOperand, operandType, pFunctionName));
     return getAssignStatement(pItem, cast, pFunctionName);
   }
 
