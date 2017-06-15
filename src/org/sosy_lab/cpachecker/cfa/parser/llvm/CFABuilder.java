@@ -26,7 +26,9 @@ package org.sosy_lab.cpachecker.cfa.parser.llvm;
 import com.google.common.base.Optional;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import org.llvm.Module;
 import org.llvm.TypeRef;
@@ -38,6 +40,7 @@ import org.sosy_lab.cpachecker.cfa.ParseResult;
 import org.sosy_lab.cpachecker.cfa.ast.FileLocation;
 import org.sosy_lab.cpachecker.cfa.ast.c.CAssignment;
 import org.sosy_lab.cpachecker.cfa.ast.c.CAstNode;
+import org.sosy_lab.cpachecker.cfa.ast.c.CBinaryExpression;
 import org.sosy_lab.cpachecker.cfa.ast.c.CExpression;
 import org.sosy_lab.cpachecker.cfa.ast.c.CExpressionAssignmentStatement;
 import org.sosy_lab.cpachecker.cfa.ast.c.CExpressionStatement;
@@ -47,6 +50,8 @@ import org.sosy_lab.cpachecker.cfa.ast.c.CIntegerLiteralExpression;
 import org.sosy_lab.cpachecker.cfa.ast.c.CParameterDeclaration;
 import org.sosy_lab.cpachecker.cfa.ast.c.CReturnStatement;
 import org.sosy_lab.cpachecker.cfa.ast.c.CSimpleDeclaration;
+import org.sosy_lab.cpachecker.cfa.ast.c.CUnaryExpression;
+import org.sosy_lab.cpachecker.cfa.ast.c.CUnaryExpression.UnaryOperator;
 import org.sosy_lab.cpachecker.cfa.ast.c.CVariableDeclaration;
 import org.sosy_lab.cpachecker.cfa.model.FunctionEntryNode;
 import org.sosy_lab.cpachecker.cfa.model.FunctionExitNode;
@@ -78,12 +83,16 @@ public class CFABuilder extends LlvmAstVisitor {
 
   private final LlvmTypeConverter typeConverter;
 
+  private final Map<Long, CSimpleDeclaration> variableDeclarations;
+
   public CFABuilder(final LogManager pLogger, final MachineModel pMachineModel) {
     super(pLogger);
     logger = pLogger;
     machineModel = pMachineModel;
 
     typeConverter = new LlvmTypeConverter(pMachineModel, pLogger);
+
+    variableDeclarations = new HashMap<>();
   }
 
   public ParseResult build(final Module pModule) {
@@ -144,25 +153,40 @@ public class CFABuilder extends LlvmAstVisitor {
 
   private CAstNode handleAlloca(final Value pItem, String pFunctionName) {
     // We ignore the specifics and handle alloca statements like C declarations
-    String assignedVar = pItem.getValueName();
-    if (assignedVar.isEmpty()) {
-      assignedVar = getTempVar();
+    CSimpleDeclaration assignedVar = getAssignedVarDeclaration(pItem, pFunctionName);
+    return assignedVar;
+  }
+
+  private CSimpleDeclaration getAssignedVarDeclaration(
+      final Value pItem,
+      final String pFunctionName
+  ) {
+    final long itemId = pItem.getAddress();
+    if (!variableDeclarations.containsKey(itemId)) {
+      String assignedVar = pItem.getValueName();
+
+      if (assignedVar.isEmpty()) {
+        assignedVar = getTempVar();
+      }
+
+      final boolean isGlobal = pItem.isGlobalValue();
+      // TODO: Support static and other storage classes
+      final CStorageClass storageClass = CStorageClass.AUTO;
+      final CType varType = typeConverter.getCType(pItem.getAllocatedType());
+
+      CSimpleDeclaration newDecl = new CVariableDeclaration(
+          getLocation(pItem),
+          isGlobal,
+          storageClass,
+          varType,
+          assignedVar,
+          getQualifiedName(assignedVar, pFunctionName),
+          assignedVar,
+          null);
+      variableDeclarations.put(itemId, newDecl);
     }
 
-    final boolean isGlobal = pItem.isGlobalValue();
-    // TODO: Support static and other storage classes
-    final CStorageClass storageClass = CStorageClass.AUTO;
-    final CType varType = typeConverter.getCType(pItem.getAllocatedType());
-
-    return new CVariableDeclaration(
-        getLocation(pItem),
-        isGlobal,
-        storageClass,
-        varType,
-        assignedVar,
-        getQualifiedName(assignedVar, pFunctionName),
-        assignedVar,
-        null);
+    return variableDeclarations.get(pItem);
   }
 
   private CAstNode handleReturn(final Value pItem, final String pFuncName) {
