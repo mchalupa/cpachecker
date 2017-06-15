@@ -204,6 +204,8 @@ public class CFABuilder extends LlvmAstVisitor {
     FileLocation loc = getLocation(pItem);
     CType returnType = typeConverter.getCType(pItem.typeOf());
     Value calledFunction = pItem.getOperand(0);
+    int argumentCount = pItem.getNumOperands();
+
     String functionName = calledFunction.getValueName();
     // May be null and that's ok - CPAchecker will handle the call as a call to a builtin function,
     // then
@@ -211,14 +213,22 @@ public class CFABuilder extends LlvmAstVisitor {
 
     CIdExpression functionNameExp;
     if (functionDeclaration == null) {
-      functionNameExp = new CIdExpression(loc, returnType, functionName, null);
+      // Try to derive a function type from the call
+      List<CType> parameterTypes = new ArrayList<>(argumentCount-1);
+      for (int i = 1; i < argumentCount; i++) {
+        Value functionArg = pItem.getOperand(i);
+        assert functionArg.isConstant() || variableDeclarations.containsKey(functionArg.getAddress());
+        parameterTypes.add(typeConverter.getCType(functionArg.typeOf()));
+      }
+
+      CFunctionType functionType =
+          new CFunctionType(false, false, returnType, parameterTypes, false);
+      functionNameExp = new CIdExpression(loc, functionType, functionName, null);
     } else {
       functionNameExp =
           new CIdExpression(loc, functionDeclaration.getType(), functionName, functionDeclaration);
     }
 
-
-    int argumentCount = pItem.getNumOperands();
     List<CExpression> parameters = new ArrayList<>(argumentCount);
     // i = 1 to skip the function name, we only want to look at arguments
     for (int i = 1; i < argumentCount; i++) {
