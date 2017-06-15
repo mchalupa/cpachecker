@@ -224,10 +224,8 @@ public class CFABuilder extends LlvmAstVisitor {
   }
 
   private List<CAstNode> handleLoad(final Value pItem, final String pFunctionName) {
-    CIdExpression assignee = getAssignedIdExpression(pItem, pFunctionName);
     CExpression expression = getAssignedIdExpression(pItem.getOperand(0), pFunctionName);
-    return ImmutableList.of(
-        new CExpressionAssignmentStatement(getLocation(pItem), assignee, expression));
+    return getAssignStatement(pItem, expression, pFunctionName);
   }
 
   private List<CAstNode> handleStore(final Value pItem, final String pFunctionName) {
