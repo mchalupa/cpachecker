@@ -33,6 +33,7 @@ import org.llvm.Value;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import org.sosy_lab.common.log.LogManager;
+import org.sosy_lab.cpachecker.cfa.ast.ADeclaration;
 import org.sosy_lab.cpachecker.cfa.ast.c.CAstNode;
 import org.sosy_lab.cpachecker.cfa.ast.c.CStatement;
 import org.sosy_lab.cpachecker.cfa.ast.c.CExpression;
@@ -84,8 +85,6 @@ public abstract class LlvmAstVisitor {
     globalDeclarations = new ArrayList<>();
   }
 
-  public enum Behavior { CONTINUE, STOP }
-
   public void visit(final Module pItem) {
     /* create globals */
     iterateOverGlobals(pItem);
@@ -104,18 +103,14 @@ public abstract class LlvmAstVisitor {
     assert globalItemLast != null;
 
     while (true) {
-      Behavior behavior = visitGlobalItem(globalItem);
-      if (behavior == Behavior.CONTINUE) {
-        /* we processed the last global variable? */
-        if (globalItem.equals(globalItemLast))
-          break;
+      ADeclaration decl = visitGlobalItem(globalItem);
+      globalDeclarations.add(Pair.of(decl, globalItem.toString()));
 
-        globalItem = globalItem.getNextGlobal();
+      /* we processed the last global variable? */
+      if (globalItem.equals(globalItemLast))
+        break;
 
-      } else {
-        assert behavior == Behavior.STOP : "Unhandled behavior type " + behavior;
-        return;
-      }
+      globalItem = globalItem.getNextGlobal();
     }
   }
 
@@ -341,5 +336,5 @@ public abstract class LlvmAstVisitor {
   protected abstract CAstNode visitInstruction(Value pItem, String pFunctionName);
   protected abstract CExpression getBranchCondition(Value pItem, String funcName);
 
-  protected abstract Behavior visitGlobalItem(final Value pItem);
+  protected abstract ADeclaration visitGlobalItem(final Value pItem);
 }

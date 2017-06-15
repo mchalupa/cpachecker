@@ -39,6 +39,7 @@ import org.sosy_lab.common.log.LogManager;
 import org.sosy_lab.cpachecker.cfa.Language;
 import org.sosy_lab.cpachecker.cfa.ParseResult;
 import org.sosy_lab.cpachecker.cfa.ast.FileLocation;
+import org.sosy_lab.cpachecker.cfa.ast.ADeclaration;
 import org.sosy_lab.cpachecker.cfa.ast.c.CAssignment;
 import org.sosy_lab.cpachecker.cfa.ast.c.CAstNode;
 import org.sosy_lab.cpachecker.cfa.ast.c.CBinaryExpression;
@@ -654,8 +655,15 @@ public class CFABuilder extends LlvmAstVisitor {
   }
 
   @Override
-  protected Behavior visitGlobalItem(final Value pItem) {
-    return Behavior.CONTINUE; // Parent will iterate through the statements of the block that way
+  protected ADeclaration visitGlobalItem(final Value pItem) {
+    /*
+    assert !pItem.isExternallyInitialized();
+
+    // now we handle only simple initializers
+    Value initializer = pItem.getInitializer();
+    return getConstant(initializer);
+    */
+    return null;
   }
 
   private FileLocation getLocation(final Value pItem) {
