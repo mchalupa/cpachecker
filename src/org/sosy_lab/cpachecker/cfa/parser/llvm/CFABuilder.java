@@ -26,6 +26,7 @@ package org.sosy_lab.cpachecker.cfa.parser.llvm;
 import com.google.common.base.Optional;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,6 +46,9 @@ import org.sosy_lab.cpachecker.cfa.ast.c.CBinaryExpression.BinaryOperator;
 import org.sosy_lab.cpachecker.cfa.ast.c.CExpression;
 import org.sosy_lab.cpachecker.cfa.ast.c.CExpressionAssignmentStatement;
 import org.sosy_lab.cpachecker.cfa.ast.c.CExpressionStatement;
+import org.sosy_lab.cpachecker.cfa.ast.c.CFunctionCallAssignmentStatement;
+import org.sosy_lab.cpachecker.cfa.ast.c.CFunctionCallExpression;
+import org.sosy_lab.cpachecker.cfa.ast.c.CFunctionCallStatement;
 import org.sosy_lab.cpachecker.cfa.ast.c.CFunctionDeclaration;
 import org.sosy_lab.cpachecker.cfa.ast.c.CIdExpression;
 import org.sosy_lab.cpachecker.cfa.ast.c.CIntegerLiteralExpression;
@@ -78,6 +82,21 @@ public class CFABuilder extends LlvmAstVisitor {
 
   private static final String RETURN_VAR_NAME = "__retval__";
   private static final String TMP_VAR_PREFIX = "__tmp_";
+
+  private static final CFunctionDeclaration ABORT_FUNC_DECL = new CFunctionDeclaration(
+          FileLocation.DUMMY,
+          new CFunctionType(
+              false,
+              false,
+              CVoidType.VOID,
+              Collections.emptyList(),
+              false),
+      "abort",
+          Collections.emptyList()
+  );
+  private static final CExpression ABORT_FUNC_NAME =
+      new CIdExpression(FileLocation.DUMMY, CVoidType.VOID, "abort", ABORT_FUNC_DECL);
+
   private static long tmpVarCount = 0;
 
   private final LogManager logger;
@@ -87,6 +106,7 @@ public class CFABuilder extends LlvmAstVisitor {
   private CBinaryExpressionBuilder binaryExpressionBuilder;
 
   private final Map<Long, CSimpleDeclaration> variableDeclarations;
+  private Map<String, CFunctionDeclaration> functionDeclarations;
 
   public CFABuilder(final LogManager pLogger, final MachineModel pMachineModel) {
     super(pLogger);
@@ -96,6 +116,7 @@ public class CFABuilder extends LlvmAstVisitor {
     typeConverter = new LlvmTypeConverter(pMachineModel, pLogger);
     variableDeclarations = new HashMap<>();
     binaryExpressionBuilder = new CBinaryExpressionBuilder(pMachineModel, pLogger);
+    functionDeclarations = new HashMap<>();
   }
 
   public ParseResult build(final Module pModule) {
@@ -140,7 +161,7 @@ public class CFABuilder extends LlvmAstVisitor {
     } else if (pItem.isReturnInst()) {
       return handleReturn(pItem, pFunctionName);
     } else if (pItem.isUnreachableInst()) {
-      // TODO
+      return handleUnreachable(pItem, pFunctionName);
 
     } else if (pItem.isBinaryOperator()) {
       return handleBinaryOp(pItem, pFunctionName);
@@ -149,10 +170,11 @@ public class CFABuilder extends LlvmAstVisitor {
     } else if (pItem.isStoreInst()) {
       return handleStore(pItem, pFunctionName);
     } else if (pItem.isCallInst()) {
-      // TODO
+      return handleCall(pItem, pFunctionName);
     } else if (pItem.isCmpInst()) {
       return handleCmpInst(pItem, pFunctionName);
     } else if (pItem.isSwitchInst()) {
+
       throw new UnsupportedOperationException();
     } else if (pItem.isIndirectBranchInst()) {
       throw new UnsupportedOperationException();
@@ -163,13 +185,43 @@ public class CFABuilder extends LlvmAstVisitor {
     } else {
       throw new UnsupportedOperationException();
     }
+  }
 
-    CExpression dummy_exp = new CIntegerLiteralExpression(
-        getLocation(pItem),
-        CNumericTypes.INT,
-        BigInteger.ONE
-    );
-    return new CExpressionStatement(getLocation(pItem), dummy_exp);
+  private CAstNode handleCall(final Value pItem, final String pFunctionName) {
+    assert pItem.isCallInst();
+    FileLocation loc = getLocation(pItem);
+    CType returnType = typeConverter.getCType(pItem.typeOf());
+    Value calledFunction = pItem.getOperand(0);
+    String functionName = calledFunction.getValueName();
+    // May be null and that's ok - CPAchecker will handle the call as a call to a builtin function,
+    // then
+    CFunctionDeclaration functionDeclaration = functionDeclarations.get(functionName);
+
+    CIdExpression functionNameExp =
+        new CIdExpression(loc, functionDeclaration.getType(), functionName, functionDeclaration);
+
+    List<Value> functionArguments = pItem.getParams();
+    List<CExpression> parameters = new ArrayList<>(functionArguments.size());
+    for (Value param : functionArguments) {
+      parameters.add(getAssignedIdExpression(param, pFunctionName));
+    }
+
+    CFunctionCallExpression callExpression = new CFunctionCallExpression(loc, returnType,
+        functionNameExp, parameters, functionDeclaration);
+
+    if (returnType.equals(CVoidType.VOID)) {
+      return new CFunctionCallStatement(loc, callExpression);
+    } else {
+      CIdExpression assignee = getAssignedIdExpression(pItem, pFunctionName);
+      return new CFunctionCallAssignmentStatement(loc, assignee, callExpression);
+    }
+  }
+
+  private CAstNode handleUnreachable(final Value pItem, final String pFunctionName) {
+    CFunctionCallExpression callExpression =
+        new CFunctionCallExpression(getLocation(pItem), CVoidType.VOID, ABORT_FUNC_NAME,
+            Collections.emptyList(), ABORT_FUNC_DECL);
+    return new CFunctionCallStatement(getLocation(pItem), callExpression);
   }
 
   private CAstNode handleUnaryOp(final Value pItem, final String pFunctionName) {
@@ -287,15 +339,10 @@ public class CFABuilder extends LlvmAstVisitor {
       case LLVMShl:
       case LLVMLShr:
       case LLVMAShr:
-        return handleArithmeticOp(pItem, opCode, pFunctionName);
-
-      // Boolean operations
       case LLVMAnd:
-        break;
       case LLVMOr:
-        break;
       case LLVMXor:
-        break;
+        return handleArithmeticOp(pItem, opCode, pFunctionName);
 
       // Comparison operations
       case LLVMICmp:
@@ -425,6 +472,15 @@ public class CFABuilder extends LlvmAstVisitor {
         // TODO Differentiate between logical and arithmetic shift somehow
         operation = BinaryOperator.SHIFT_RIGHT;
         break;
+      case LLVMAnd:
+        operation = BinaryOperator.BINARY_AND;
+        break;
+      case LLVMOr:
+        operation = BinaryOperator.BINARY_OR;
+        break;
+      case LLVMXor:
+        operation = BinaryOperator.BINARY_XOR;
+        break;
       default:
         throw new UnsupportedOperationException(String.valueOf(pOpCode.value()));
     }
@@ -511,6 +567,7 @@ public class CFABuilder extends LlvmAstVisitor {
         cFuncType,
         functionName,
         parameters);
+    functionDeclarations.put(functionName, functionDeclaration);
     FunctionExitNode functionExit = new FunctionExitNode(functionName);
     addNode(functionName, functionExit);
 
