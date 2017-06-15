@@ -281,33 +281,35 @@ public abstract class LlvmAstVisitor {
         continue;
 
       // process this basic block
-      CAstNode expr = visitInstruction(I, funcName);
+      List<CAstNode> expressions = visitInstruction(I, funcName);
 
-      // build an edge with this expression over it
-      if (expr == null) {
-       curNode = newNode(funcName);
-       addEdge(new BlankEdge(I.toString(), FileLocation.DUMMY,
-                            prevNode, curNode, "(noop)"));
-      } else if (expr instanceof CDeclaration) {
-       curNode = newNode(funcName);
-       addEdge(new CDeclarationEdge(expr.toASTString(), FileLocation.DUMMY,
-                                    prevNode, curNode,
-                                    (CDeclaration)expr));
-      } else if (expr instanceof CReturnStatement) {
-        curNode = exitNode;
-        addEdge(new CReturnStatementEdge(I.toString(), (CReturnStatement)expr,
-                                         FileLocation.DUMMY, prevNode, exitNode));
-      } else {
-        curNode = newNode(funcName);
-        addEdge(new CStatementEdge(expr.toASTString() + I.toString(), (CStatement)expr,
-                                   FileLocation.DUMMY, prevNode, curNode));
+      for (CAstNode expr : expressions) {
+        // build an edge with this expression over it
+        if (expr == null) {
+         curNode = newNode(funcName);
+         addEdge(new BlankEdge(I.toString(), FileLocation.DUMMY,
+                              prevNode, curNode, "(noop)"));
+        } else if (expr instanceof CDeclaration) {
+         curNode = newNode(funcName);
+         addEdge(new CDeclarationEdge(expr.toASTString(), FileLocation.DUMMY,
+                                      prevNode, curNode,
+                                      (CDeclaration)expr));
+        } else if (expr instanceof CReturnStatement) {
+          curNode = exitNode;
+          addEdge(new CReturnStatementEdge(I.toString(), (CReturnStatement)expr,
+                                           FileLocation.DUMMY, prevNode, exitNode));
+        } else {
+          curNode = newNode(funcName);
+          addEdge(new CStatementEdge(expr.toASTString() + I.toString(), (CStatement)expr,
+                                     FileLocation.DUMMY, prevNode, curNode));
+        }
+
+        prevNode = curNode;
       }
 
       // did we processed all instructions in this basic block?
       if (I.equals(lastI))
         break;
-
-      prevNode = curNode;
     }
 
     assert curNode != null;
@@ -333,7 +335,7 @@ public abstract class LlvmAstVisitor {
   }
 
   protected abstract FunctionEntryNode visitFunction(final Value pItem);
-  protected abstract CAstNode visitInstruction(Value pItem, String pFunctionName);
+  protected abstract List<CAstNode> visitInstruction(Value pItem, String pFunctionName);
   protected abstract CExpression getBranchCondition(Value pItem, String funcName);
 
   protected abstract ADeclaration visitGlobalItem(final Value pItem);
