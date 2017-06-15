@@ -112,7 +112,9 @@ public class CFABuilder extends LlvmAstVisitor {
   private final LlvmTypeConverter typeConverter;
   private CBinaryExpressionBuilder binaryExpressionBuilder;
 
+  // Value address -> Variable declaration
   private final Map<Long, CSimpleDeclaration> variableDeclarations;
+  // Function name -> Function declaration
   private Map<String, CFunctionDeclaration> functionDeclarations;
 
   public CFABuilder(final LogManager pLogger, final MachineModel pMachineModel) {
