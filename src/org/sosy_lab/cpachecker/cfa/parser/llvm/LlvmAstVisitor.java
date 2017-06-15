@@ -128,15 +128,20 @@ public abstract class LlvmAstVisitor {
       return;
 
     for (Value func : pItem) {
-      // skip declarations
-      if (func.isDeclaration())
-        continue;
-
       String funcName = func.getValueName();
       assert !funcName.isEmpty();
 
+      // XXX: may just check for generic intrinsic?
+      if (funcName.startsWith("llvm."))
+        continue;
+
       // handle the function definition
       FunctionEntryNode en = visitFunction(func);
+      if (en == null) {
+        // declaration only
+        continue;
+      }
+
       addNode(funcName, en);
 
       // create the basic blocks and instructions of the function.

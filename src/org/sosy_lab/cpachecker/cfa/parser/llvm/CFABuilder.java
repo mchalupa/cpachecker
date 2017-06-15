@@ -139,7 +139,7 @@ public class CFABuilder extends LlvmAstVisitor {
 
     logger.log(Level.INFO, "Creating function: " + pItem.getValueName());
 
-    return handleFunctionDefinition(pItem);
+    return handleFunction(pItem);
   }
 
   @Override
@@ -608,7 +608,7 @@ public class CFABuilder extends LlvmAstVisitor {
     return TMP_VAR_PREFIX + tmpVarCount;
   }
 
-  private FunctionEntryNode handleFunctionDefinition(final Value pFuncDef) {
+  private FunctionEntryNode handleFunction(final Value pFuncDef) {
     String functionName = pFuncDef.getValueName();
 
     // Function type
@@ -638,6 +638,10 @@ public class CFABuilder extends LlvmAstVisitor {
         functionName,
         parameters);
     functionDeclarations.put(functionName, functionDeclaration);
+
+    if (pFuncDef.isDeclaration())
+      return null;
+
     FunctionExitNode functionExit = new FunctionExitNode(functionName);
     addNode(functionName, functionExit);
 
