@@ -44,6 +44,7 @@ import org.sosy_lab.cpachecker.cfa.ast.FileLocation;
 import org.sosy_lab.cpachecker.cfa.ast.ADeclaration;
 import org.sosy_lab.cpachecker.cfa.ast.c.CAssignment;
 import org.sosy_lab.cpachecker.cfa.ast.c.CAstNode;
+import org.sosy_lab.cpachecker.cfa.ast.c.CCastExpression;
 import org.sosy_lab.cpachecker.cfa.ast.c.CBinaryExpression;
 import org.sosy_lab.cpachecker.cfa.ast.c.CBinaryExpression.BinaryOperator;
 import org.sosy_lab.cpachecker.cfa.ast.c.CExpression;
@@ -180,6 +181,8 @@ public class CFABuilder extends LlvmAstVisitor {
       return handleCall(pItem, pFunctionName);
     } else if (pItem.isCmpInst()) {
       return handleCmpInst(pItem, pFunctionName);
+    } else if (pItem.isGetElementPtrInst()) {
+      return null;
     } else if (pItem.isSwitchInst()) {
 
       throw new UnsupportedOperationException();
@@ -243,6 +246,8 @@ public class CFABuilder extends LlvmAstVisitor {
   private List<CAstNode> handleUnaryOp(final Value pItem, final String pFunctionName) {
      if (pItem.isLoadInst()) {
        return handleLoad(pItem, pFunctionName);
+     } else if (pItem.isCastInst()) {
+       return handleCastInst(pItem, pFunctionName);
      } else {
        throw new UnsupportedOperationException(
            "LLVM does not yet support operator with opcode " + pItem.getOpCode());
@@ -707,6 +712,13 @@ public class CFABuilder extends LlvmAstVisitor {
     } catch (UnrecognizedCCodeException e) {
         throw new UnsupportedOperationException(e.toString());
     }
+  }
+
+  private List<CAstNode> handleCastInst(final Value pItem, String pFunctionName) {
+    CCastExpression cast = new CCastExpression(getLocation(pItem),
+                                               typeConverter.getCType(pItem.typeOf()),
+                                               getExpression(pItem.getOperand(0), pFunctionName));
+    return getAssignStatement(pItem, cast, pFunctionName);
   }
 
   @Override
