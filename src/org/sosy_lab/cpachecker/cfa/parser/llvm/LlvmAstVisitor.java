@@ -41,17 +41,19 @@ import org.sosy_lab.cpachecker.cfa.ast.ADeclaration;
 import org.sosy_lab.cpachecker.cfa.ast.FileLocation;
 import org.sosy_lab.cpachecker.cfa.ast.c.CStatement;
 import org.sosy_lab.cpachecker.cfa.ast.c.CDeclaration;
+import org.sosy_lab.cpachecker.cfa.ast.c.CReturnStatement;
 import org.sosy_lab.cpachecker.cfa.types.c.CBasicType;
 import org.sosy_lab.cpachecker.cfa.types.c.CSimpleType;
 import org.sosy_lab.cpachecker.cfa.model.CFANode;
 import org.sosy_lab.cpachecker.cfa.model.CFAEdge;
-import org.sosy_lab.cpachecker.cfa.model.FunctionEntryNode;
 import org.sosy_lab.cpachecker.cfa.model.c.CLabelNode;
 import org.sosy_lab.cpachecker.cfa.model.c.CAssumeEdge;
 import org.sosy_lab.cpachecker.cfa.model.FunctionEntryNode;
+import org.sosy_lab.cpachecker.cfa.model.FunctionExitNode;
 import org.sosy_lab.cpachecker.cfa.model.BlankEdge;
 import org.sosy_lab.cpachecker.cfa.model.c.CStatementEdge;
 import org.sosy_lab.cpachecker.cfa.model.c.CDeclarationEdge;
+import org.sosy_lab.cpachecker.cfa.model.c.CReturnStatementEdge;
 import org.sosy_lab.cpachecker.util.Pair;
 import java.util.function.Function;
 import org.llvm.*;
@@ -145,7 +147,7 @@ public abstract class LlvmAstVisitor {
       // create the basic blocks and instructions of the function.
       // A basic block is mapped to a pair <entry node, exit node>
       SortedMap<Long, BasicBlockInfo> basicBlocks = new TreeMap<>();
-      CLabelNode entryBB = iterateOverBasicBlocks(func, funcName, basicBlocks);
+      CLabelNode entryBB = iterateOverBasicBlocks(func, en, funcName, basicBlocks);
 
       // add the edge from the entry of the function to the first
       // basic block
@@ -175,6 +177,7 @@ public abstract class LlvmAstVisitor {
    * (as a CLabelNode).
    */
   private CLabelNode iterateOverBasicBlocks(final Value pItem,
+                                            FunctionEntryNode entryNode,
                                             String funcName,
                                             SortedMap<Long, BasicBlockInfo> basicBlocks) {
     assert pItem.isFunction();
@@ -190,7 +193,7 @@ public abstract class LlvmAstVisitor {
       if (entryBB == null)
         entryBB = label;
 
-      BasicBlockInfo bbi = handleInstructions(funcName, BB);
+      BasicBlockInfo bbi = handleInstructions(entryNode.getExitNode(), funcName, BB);
       basicBlocks.put(BB.getAddress(), new BasicBlockInfo(label, bbi.getExitNode()));
 
       // add an edge from label to the first node
@@ -266,32 +269,48 @@ public abstract class LlvmAstVisitor {
     }
   }
 
+  private CFANode newNode(String funcName) {
+    CFANode nd = new CFANode(funcName);
+    addNode(funcName, nd);
+
+    return nd;
+  }
+
   /**
    * Create a chain of nodes and edges corresponding to one basic block.
    */
-  private BasicBlockInfo handleInstructions(String funcName, final BasicBlock pItem) {
+  private BasicBlockInfo handleInstructions(FunctionExitNode exitNode,
+                                            String funcName, final BasicBlock pItem) {
     assert pItem.getFirstInstruction() != null; // empty BB not supported
 
     Value lastI = pItem.getLastInstruction();
     assert lastI != null;
 
-    CFANode prevNode = new CFANode(funcName);
+    CFANode prevNode = newNode(funcName);
     CFANode firstNode = prevNode;
-    CFANode curNode = new CFANode(funcName);
-    addNode(funcName, prevNode);
-    addNode(funcName, curNode);
+    CFANode curNode = null;
 
     for (Value I : pItem) {
       // process this basic block
       CAstNode expr = visitInstruction(I, funcName);
 
       // build an edge with this expression over it
-       if (expr instanceof CDeclaration) {
-        addEdge(new CDeclarationEdge(I.toString(), FileLocation.DUMMY,
-                                     prevNode, curNode,
-                                     (CDeclaration)expr));
+      if (expr == null) {
+       curNode = newNode(funcName);
+       addEdge(new BlankEdge(I.toString(), FileLocation.DUMMY,
+                            prevNode, curNode, "(noop)"));
+      } else if (expr instanceof CDeclaration) {
+       curNode = newNode(funcName);
+       addEdge(new CDeclarationEdge(expr.toASTString(), FileLocation.DUMMY,
+                                    prevNode, curNode,
+                                    (CDeclaration)expr));
+      } else if (expr instanceof CReturnStatement) {
+        curNode = exitNode;
+        addEdge(new CReturnStatementEdge(I.toString(), (CReturnStatement)expr,
+                                         FileLocation.DUMMY, prevNode, exitNode));
       } else {
-        addEdge(new CStatementEdge(I.toString(), (CStatement)expr,
+        curNode = newNode(funcName);
+        addEdge(new CStatementEdge(expr.toASTString() + I.toString(), (CStatement)expr,
                                    FileLocation.DUMMY, prevNode, curNode));
       }
 
@@ -300,10 +319,9 @@ public abstract class LlvmAstVisitor {
         break;
 
       prevNode = curNode;
-      curNode = new CFANode(funcName);
-      addNode(funcName, curNode);
     }
 
+    assert curNode != null;
     return new BasicBlockInfo(firstNode, curNode);
   }
 

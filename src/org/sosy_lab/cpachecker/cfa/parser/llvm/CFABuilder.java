@@ -142,6 +142,8 @@ public class CFABuilder extends LlvmAstVisitor {
       throw new UnsupportedOperationException();
     } else if (pItem.isIndirectBranchInst()) {
       throw new UnsupportedOperationException();
+    } else if (pItem.isBranchInst()) {
+      return null;
     } else if (pItem.isInvokeInst()) {
       throw new UnsupportedOperationException();
     } else {
@@ -559,8 +561,8 @@ public class CFABuilder extends LlvmAstVisitor {
 
     try {
       CBinaryExpression cmp = binaryExpressionBuilder.buildBinaryExpression(
-        new CIdExpression(getLocation(pItem), getAssignedVarDeclaration(operand1, pFunctionName)),
-        new CIdExpression(getLocation(pItem), getAssignedVarDeclaration(operand2, pFunctionName)),
+        getExpression(operand1, pFunctionName),
+        getExpression(operand2, pFunctionName),
         operator);
 
       return new CExpressionAssignmentStatement(getLocation(pItem),
