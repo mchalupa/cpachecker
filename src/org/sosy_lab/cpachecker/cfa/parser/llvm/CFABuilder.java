@@ -558,10 +558,14 @@ public class CFABuilder extends LlvmAstVisitor {
     Value operand2 = pItem.getOperand(1);
 
     try {
-      return binaryExpressionBuilder.buildBinaryExpression(
+      CBinaryExpression cmp = binaryExpressionBuilder.buildBinaryExpression(
         new CIdExpression(getLocation(pItem), getAssignedVarDeclaration(operand1, pFunctionName)),
         new CIdExpression(getLocation(pItem), getAssignedVarDeclaration(operand2, pFunctionName)),
         operator);
+
+      return new CExpressionAssignmentStatement(getLocation(pItem),
+                                                getAssignedIdExpression(pItem, pFunctionName),
+                                                cmp);
     } catch (UnrecognizedCCodeException e) {
         throw new UnsupportedOperationException(e.toString());
     }
