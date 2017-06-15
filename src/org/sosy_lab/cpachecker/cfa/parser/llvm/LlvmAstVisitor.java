@@ -282,6 +282,9 @@ public abstract class LlvmAstVisitor {
     CFANode curNode = null;
 
     for (Value I : pItem) {
+      if (I.isDbgInfoIntrinsic() || I.isDbgDeclareInst())
+        continue;
+
       // process this basic block
       CAstNode expr = visitInstruction(I, funcName);
 
