@@ -86,11 +86,29 @@ public abstract class LlvmAstVisitor {
   }
 
   public void visit(final Module pItem) {
+    if (pItem.getFirstFunction() == null)
+      return;
+
+    addFunctionDeclarations(pItem);
+
     /* create globals */
     iterateOverGlobals(pItem);
 
     /* create CFA for all functions */
     iterateOverFunctions(pItem);
+  }
+
+  private void addFunctionDeclarations(final Module pItem) {
+    for (Value func : pItem) {
+      String funcName = func.getValueName();
+      assert !funcName.isEmpty();
+
+      // XXX: may just check for generic intrinsic?
+      if (funcName.startsWith("llvm."))
+        continue;
+
+      declareFunction(func);
+    }
   }
 
   private void iterateOverGlobals(final Module pItem) {
@@ -124,10 +142,10 @@ public abstract class LlvmAstVisitor {
   }
 
   private void iterateOverFunctions(final Module pItem) {
-    if (pItem.getFirstFunction() == null)
-      return;
-
     for (Value func : pItem) {
+      if (func.isDeclaration())
+        continue;
+
       String funcName = func.getValueName();
       assert !funcName.isEmpty();
 
@@ -137,11 +155,7 @@ public abstract class LlvmAstVisitor {
 
       // handle the function definition
       FunctionEntryNode en = visitFunction(func);
-      if (en == null) {
-        // declaration only
-        continue;
-      }
-
+      assert en != null;
       addNode(funcName, en);
 
       // create the basic blocks and instructions of the function.
@@ -343,6 +357,7 @@ public abstract class LlvmAstVisitor {
   }
 
   protected abstract FunctionEntryNode visitFunction(final Value pItem);
+  protected abstract void declareFunction(final Value pItem);
   protected abstract List<CAstNode> visitInstruction(Value pItem, String pFunctionName);
   protected abstract CExpression getBranchCondition(Value pItem, String funcName);
 

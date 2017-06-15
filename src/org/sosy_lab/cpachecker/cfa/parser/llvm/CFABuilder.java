@@ -141,7 +141,7 @@ public class CFABuilder extends LlvmAstVisitor {
 
     logger.log(Level.INFO, "Creating function: " + pItem.getValueName());
 
-    return handleFunction(pItem);
+    return handleFunctionDefinition(pItem);
   }
 
   @Override
@@ -184,7 +184,7 @@ public class CFABuilder extends LlvmAstVisitor {
     } else if (pItem.isCmpInst()) {
       return handleCmpInst(pItem, pFunctionName);
     } else if (pItem.isGetElementPtrInst()) {
-      return null;
+      return handleGEP(pItem, pFunctionName);
     } else if (pItem.isSwitchInst()) {
 
       throw new UnsupportedOperationException();
@@ -610,7 +610,8 @@ public class CFABuilder extends LlvmAstVisitor {
     return TMP_VAR_PREFIX + tmpVarCount;
   }
 
-  private FunctionEntryNode handleFunction(final Value pFuncDef) {
+  @Override
+  protected void declareFunction(final Value pFuncDef) {
     String functionName = pFuncDef.getValueName();
 
     // Function type
@@ -640,12 +641,19 @@ public class CFABuilder extends LlvmAstVisitor {
         functionName,
         parameters);
     functionDeclarations.put(functionName, functionDeclaration);
+  }
 
-    if (pFuncDef.isDeclaration())
-      return null;
+  private FunctionEntryNode handleFunctionDefinition(final Value pFuncDef) {
+    assert !pFuncDef.isDeclaration();
 
+    String functionName = pFuncDef.getValueName();
     FunctionExitNode functionExit = new FunctionExitNode(functionName);
     addNode(functionName, functionExit);
+
+    // Function type
+    TypeRef functionType = pFuncDef.typeOf();
+    TypeRef elemType = functionType.getElementType();
+    CFunctionType cFuncType = (CFunctionType) typeConverter.getCType(elemType);
 
     // Return variable : The return value is written to this
     Optional<CVariableDeclaration> returnVar;
@@ -658,6 +666,7 @@ public class CFABuilder extends LlvmAstVisitor {
       returnVar = Optional.of(returnVarDecl);
     }
 
+    CFunctionDeclaration functionDeclaration = functionDeclarations.get(functionName);
     FunctionEntryNode entry = new CFunctionEntryNode(
       getLocation(pFuncDef), functionDeclaration,
       functionExit, returnVar);
@@ -670,6 +679,11 @@ public class CFABuilder extends LlvmAstVisitor {
     return new CVariableDeclaration(
         FileLocation.DUMMY, false, CStorageClass.AUTO, pType, RETURN_VAR_NAME,
         RETURN_VAR_NAME, getQualifiedName(RETURN_VAR_NAME, pFunctionName), null /* no initializer */);
+  }
+
+  private List<CAstNode> handleGEP(final Value pItem, String pFunctionName) {
+      return null;
+      //return getAssignStatement(pItem, ptrexpr, pFunctionName);
   }
 
   private List<CAstNode> handleCmpInst(final Value pItem, String pFunctionName) {
