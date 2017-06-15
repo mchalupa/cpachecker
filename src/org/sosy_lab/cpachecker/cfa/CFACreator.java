@@ -366,7 +366,7 @@ private boolean classifyNodes = false;
         mainFunction = getCMainFunction(sourceFiles, c.getFunctions());
         break;
       case LLVM:
-        mainFunction = c.getFunctions().get(mainFunctionName);
+        mainFunction = getCMainFunction(sourceFiles, c.getFunctions());
         break;
       default:
         throw new AssertionError();
@@ -818,6 +818,7 @@ private boolean classifyNodes = false;
       final CFAEdge newEdge;
       switch (cfa.getLanguage()) {
         case C:
+        case LLVM:
           newEdge = new CDeclarationEdge(rawSignature, d.getFileLocation(), cur, n, (CDeclaration) d);
           break;
         case JAVA :
