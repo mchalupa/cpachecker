@@ -52,9 +52,7 @@ import org.sosy_lab.cpachecker.cfa.ast.c.CParameterDeclaration;
 import org.sosy_lab.cpachecker.cfa.ast.c.CReturnStatement;
 import org.sosy_lab.cpachecker.cfa.ast.c.CSimpleDeclaration;
 import org.sosy_lab.cpachecker.cfa.ast.c.CVariableDeclaration;
-import org.sosy_lab.cpachecker.cfa.ast.c.CBinaryExpression;
 import org.sosy_lab.cpachecker.cfa.ast.c.CBinaryExpressionBuilder;
-import org.sosy_lab.cpachecker.cfa.ast.c.CBinaryExpression.BinaryOperator;
 import org.sosy_lab.cpachecker.cfa.model.FunctionEntryNode;
 import org.sosy_lab.cpachecker.cfa.model.FunctionExitNode;
 import org.sosy_lab.cpachecker.cfa.model.c.CFunctionEntryNode;
@@ -113,6 +111,22 @@ public class CFABuilder extends LlvmAstVisitor {
     logger.log(Level.INFO, "Creating function: " + pItem.getValueName());
 
     return handleFunctionDefinition(pItem);
+  }
+
+  @Override
+  protected CExpression getBranchCondition(final Value pItem, String funcName) {
+    Value cond = pItem.getCondition();
+    try {
+      return binaryExpressionBuilder.buildBinaryExpression(
+        getExpression(cond, funcName),
+        new CIntegerLiteralExpression(
+            getLocation(pItem),
+            CNumericTypes.BOOL,
+            BigInteger.ONE),
+        BinaryOperator.EQUALS);
+    } catch (UnrecognizedCCodeException e) {
+        throw new AssertionError(e.toString());
+    }
   }
 
   @Override
@@ -498,6 +512,7 @@ public class CFABuilder extends LlvmAstVisitor {
         functionName,
         parameters);
     FunctionExitNode functionExit = new FunctionExitNode(functionName);
+    addNode(functionName, functionExit);
 
     // Return variable : The return value is written to this
     Optional<CVariableDeclaration> returnVar;

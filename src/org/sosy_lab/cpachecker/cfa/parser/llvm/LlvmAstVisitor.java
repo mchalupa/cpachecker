@@ -119,7 +119,7 @@ public abstract class LlvmAstVisitor {
     }
   }
 
-  private void addNode(String funcName, CFANode nd) {
+  protected void addNode(String funcName, CFANode nd) {
       cfaNodes.put(funcName, nd);
   }
 
@@ -156,14 +156,7 @@ public abstract class LlvmAstVisitor {
                              en, entryBB, "Function start edge"));
 
       // add branching between instructions
-      List<CFANode> termnodes = addJumpsBetweenBasicBlocks(func, basicBlocks);
-
-      // lead every termination node to the one unified termination node of the CFA
-      CFANode exitNode = en.getExitNode();
-      for (CFANode n : termnodes) {
-        addEdge(new BlankEdge("to_exit", FileLocation.DUMMY,
-                              n, exitNode, "Unified exit edge"));
-      }
+      addJumpsBetweenBasicBlocks(func, basicBlocks);
 
       functions.put(funcName, en);
     }
@@ -208,13 +201,11 @@ public abstract class LlvmAstVisitor {
   }
 
   /**
-   * Add branching edges between nodes, returns the set of termination nodes
+   * Add branching edges between first and last nodes of basic blocks.
    */
-  private List<CFANode> addJumpsBetweenBasicBlocks(final Value pItem,
-                                                   SortedMap<Long, BasicBlockInfo> basicBlocks) {
+  private void addJumpsBetweenBasicBlocks(final Value pItem,
+                                          SortedMap<Long, BasicBlockInfo> basicBlocks) {
     assert pItem.isFunction();
-
-    List<CFANode> termnodes = new ArrayList<CFANode>();
 
     // for every basic block, get the last instruction and
     // add edges from it to labels where it jumps
@@ -230,33 +221,33 @@ public abstract class LlvmAstVisitor {
 
       int succNum = terminatorInst.getNumSuccessors();
       if (succNum == 0) {
-        termnodes.add(brNode);
+        continue;
+      } else if (succNum == 1) {
+        BasicBlock succ = terminatorInst.getSuccessor(0);
+        CLabelNode label = (CLabelNode)basicBlocks.get(succ.getAddress()).getEntryNode();
+
+        addEdge(new BlankEdge("(goto)", FileLocation.DUMMY,
+                              brNode, (CFANode)label, "(goto)"));
         continue;
       }
 
+      // switch is not supported yet
+      assert succNum == 2;
+
       // get the operands and add branching edges
-      for (int i = 0; i < succNum; ++i) {
-        BasicBlock succ = terminatorInst.getSuccessor(i);
-        CLabelNode label = (CLabelNode)basicBlocks.get(succ.getAddress()).getEntryNode();
+      terminatorInst.dumpValue();
+      CExpression condition = getBranchCondition(terminatorInst, pItem.getValueName());
 
-        // FIXME
-        CExpression expr = new CCharLiteralExpression(
-          FileLocation.DUMMY,
-          new CSimpleType(
-              false, false,
-              CBasicType.CHAR,
-              false, false, false,
-              true,
-              false, false, false),
-          (char) i
-        );
+      BasicBlock succ = terminatorInst.getSuccessor(0);
+      CLabelNode label = (CLabelNode)basicBlocks.get(succ.getAddress()).getEntryNode();
+      addEdge(new CAssumeEdge(condition.toASTString(), FileLocation.DUMMY,
+                              brNode, (CFANode)label, condition, true));
 
-        addEdge(new CAssumeEdge("?", FileLocation.DUMMY,
-                        brNode, (CFANode)label, expr, false));
-      }
+      succ = terminatorInst.getSuccessor(1);
+      label = (CLabelNode)basicBlocks.get(succ.getAddress()).getEntryNode();
+      addEdge(new CAssumeEdge(condition.toASTString(), FileLocation.DUMMY,
+                              brNode, (CFANode)label, condition, false));
     }
-
-    return termnodes;
   }
 
   private String getBBName(BasicBlock BB) {
@@ -345,6 +336,7 @@ public abstract class LlvmAstVisitor {
 
   protected abstract FunctionEntryNode visitFunction(final Value pItem);
   protected abstract CAstNode visitInstruction(Value pItem, String pFunctionName);
+  protected abstract CExpression getBranchCondition(Value pItem, String funcName);
 
   protected abstract Behavior visitGlobalItem(final Value pItem);
 }
