@@ -53,6 +53,9 @@ import org.sosy_lab.cpachecker.cfa.ast.c.CSimpleDeclaration;
 import org.sosy_lab.cpachecker.cfa.ast.c.CUnaryExpression;
 import org.sosy_lab.cpachecker.cfa.ast.c.CUnaryExpression.UnaryOperator;
 import org.sosy_lab.cpachecker.cfa.ast.c.CVariableDeclaration;
+import org.sosy_lab.cpachecker.cfa.ast.c.CBinaryExpression;
+import org.sosy_lab.cpachecker.cfa.ast.c.CBinaryExpressionBuilder;
+import org.sosy_lab.cpachecker.cfa.ast.c.CBinaryExpression.BinaryOperator;
 import org.sosy_lab.cpachecker.cfa.model.FunctionEntryNode;
 import org.sosy_lab.cpachecker.cfa.model.FunctionExitNode;
 import org.sosy_lab.cpachecker.cfa.model.c.CFunctionEntryNode;
@@ -65,6 +68,8 @@ import org.sosy_lab.cpachecker.cfa.types.c.CType;
 import org.sosy_lab.cpachecker.cfa.types.c.CVoidType;
 import org.sosy_lab.cpachecker.cfa.model.CFANode;
 import org.sosy_lab.cpachecker.cfa.model.FunctionEntryNode;
+import org.sosy_lab.cpachecker.exceptions.UnrecognizedCCodeException;
+
 
 /**
  * CFA builder for LLVM IR.
@@ -82,6 +87,7 @@ public class CFABuilder extends LlvmAstVisitor {
   private final MachineModel machineModel;
 
   private final LlvmTypeConverter typeConverter;
+  private CBinaryExpressionBuilder binaryExpressionBuilder;
 
   private final Map<Long, CSimpleDeclaration> variableDeclarations;
 
@@ -91,8 +97,8 @@ public class CFABuilder extends LlvmAstVisitor {
     machineModel = pMachineModel;
 
     typeConverter = new LlvmTypeConverter(pMachineModel, pLogger);
-
     variableDeclarations = new HashMap<>();
+    binaryExpressionBuilder = new CBinaryExpressionBuilder(pMachineModel, pLogger);
   }
 
   public ParseResult build(final Module pModule) {
@@ -133,6 +139,8 @@ public class CFABuilder extends LlvmAstVisitor {
       //TODO
     } else if (pItem.isCallInst()) {
       // TODO
+    } else if (pItem.isCmpInst()) {
+      return handleCmpInst(pItem, pFunctionName);
     } else if (pItem.isSwitchInst()) {
       throw new UnsupportedOperationException();
     } else if (pItem.isIndirectBranchInst()) {
@@ -172,7 +180,7 @@ public class CFABuilder extends LlvmAstVisitor {
       final boolean isGlobal = pItem.isGlobalValue();
       // TODO: Support static and other storage classes
       final CStorageClass storageClass = CStorageClass.AUTO;
-      final CType varType = typeConverter.getCType(pItem.getAllocatedType());
+      final CType varType = typeConverter.getCType(pItem.typeOf());
 
       CSimpleDeclaration newDecl = new CVariableDeclaration(
           getLocation(pItem),
@@ -186,7 +194,7 @@ public class CFABuilder extends LlvmAstVisitor {
       variableDeclarations.put(itemId, newDecl);
     }
 
-    return variableDeclarations.get(pItem);
+    return variableDeclarations.get(pItem.getAddress());
   }
 
   private CAstNode handleReturn(final Value pItem, final String pFuncName) {
@@ -395,6 +403,51 @@ public class CFABuilder extends LlvmAstVisitor {
     return new CVariableDeclaration(
         FileLocation.DUMMY, false, CStorageClass.AUTO, pType, RETURN_VAR_NAME,
         RETURN_VAR_NAME, getQualifiedName(RETURN_VAR_NAME, pFunctionName), null /* no initializer */);
+  }
+
+  private CAstNode handleCmpInst(final Value pItem, String pFunctionName) {
+    // the only one supported now
+    assert pItem.isICmpInst();
+
+    BinaryOperator operator = null;
+    switch (pItem.getICmpPredicate()) {
+        case LLVMIntEQ:
+            operator = BinaryOperator.EQUALS;
+            break;
+        case LLVMIntNE:
+            operator = BinaryOperator.NOT_EQUALS;
+            break;
+        case LLVMIntUGT:
+        case LLVMIntSGT:
+            operator = BinaryOperator.GREATER_THAN;
+            break;
+        case LLVMIntULT:
+        case LLVMIntSLT:
+            operator = BinaryOperator.LESS_THAN;
+            break;
+        case LLVMIntULE:
+        case LLVMIntSLE:
+            operator = BinaryOperator.LESS_EQUAL;
+            break;
+        case LLVMIntUGE:
+        case LLVMIntSGE:
+            operator = BinaryOperator.GREATER_EQUAL;
+        default:
+            throw new UnsupportedOperationException("Unsupported predicate");
+    }
+
+    assert operator != null;
+    Value operand1 = pItem.getOperand(0);
+    Value operand2 = pItem.getOperand(1);
+
+    try {
+      return binaryExpressionBuilder.buildBinaryExpression(
+        new CIdExpression(getLocation(pItem), getAssignedVarDeclaration(operand1, pFunctionName)),
+        new CIdExpression(getLocation(pItem), getAssignedVarDeclaration(operand2, pFunctionName)),
+        operator);
+    } catch (UnrecognizedCCodeException e) {
+        throw new UnsupportedOperationException(e.toString());
+    }
   }
 
   @Override

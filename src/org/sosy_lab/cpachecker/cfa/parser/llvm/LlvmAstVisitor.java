@@ -40,6 +40,7 @@ import org.sosy_lab.cpachecker.cfa.ast.c.CCharLiteralExpression;
 import org.sosy_lab.cpachecker.cfa.ast.ADeclaration;
 import org.sosy_lab.cpachecker.cfa.ast.FileLocation;
 import org.sosy_lab.cpachecker.cfa.ast.c.CStatement;
+import org.sosy_lab.cpachecker.cfa.ast.c.CDeclaration;
 import org.sosy_lab.cpachecker.cfa.types.c.CBasicType;
 import org.sosy_lab.cpachecker.cfa.types.c.CSimpleType;
 import org.sosy_lab.cpachecker.cfa.model.CFANode;
@@ -49,6 +50,8 @@ import org.sosy_lab.cpachecker.cfa.model.c.CLabelNode;
 import org.sosy_lab.cpachecker.cfa.model.c.CAssumeEdge;
 import org.sosy_lab.cpachecker.cfa.model.FunctionEntryNode;
 import org.sosy_lab.cpachecker.cfa.model.BlankEdge;
+import org.sosy_lab.cpachecker.cfa.model.c.CStatementEdge;
+import org.sosy_lab.cpachecker.cfa.model.c.CDeclarationEdge;
 import org.sosy_lab.cpachecker.util.Pair;
 import java.util.function.Function;
 import org.llvm.*;
@@ -283,9 +286,14 @@ public abstract class LlvmAstVisitor {
       CAstNode expr = visitInstruction(I, funcName);
 
       // build an edge with this expression over it
-      // TODO -- FIXME
-      addEdge(new BlankEdge("op", FileLocation.DUMMY,
-                            prevNode, curNode, I.toString()));
+       if (expr instanceof CDeclaration) {
+        addEdge(new CDeclarationEdge(I.toString(), FileLocation.DUMMY,
+                                     prevNode, curNode,
+                                     (CDeclaration)expr));
+      } else {
+        addEdge(new CStatementEdge(I.toString(), (CStatement)expr,
+                                   FileLocation.DUMMY, prevNode, curNode));
+      }
 
       // did we processed all instructions in this basic block?
       if (I.equals(lastI))
