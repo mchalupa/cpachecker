@@ -319,6 +319,10 @@ public abstract class LlvmAstVisitor {
           curNode = exitNode;
           addEdge(new CReturnStatementEdge(I.toString(), (CReturnStatement)expr,
                                            FileLocation.DUMMY, prevNode, exitNode));
+        } else if (I.isUnreachableInst()) {
+          curNode = exitNode;
+          addEdge(new BlankEdge(I.toString(), FileLocation.DUMMY,
+                               prevNode, curNode, "(unreachable)"));
         } else {
           curNode = newNode(funcName);
           addEdge(new CStatementEdge(expr.toASTString() + I.toString(), (CStatement)expr,
@@ -327,10 +331,6 @@ public abstract class LlvmAstVisitor {
 
         prevNode = curNode;
       }
-
-      // did we processed all instructions in this basic block?
-      if (I.equals(lastI))
-        break;
     }
 
     assert curNode != null;
