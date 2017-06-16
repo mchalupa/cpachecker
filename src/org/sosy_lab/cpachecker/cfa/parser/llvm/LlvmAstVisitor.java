@@ -249,18 +249,17 @@ public abstract class LlvmAstVisitor {
       assert succNum == 2;
 
       // get the operands and add branching edges
-      terminatorInst.dumpValue();
       CExpression condition = getBranchCondition(terminatorInst, pItem.getValueName());
 
       BasicBlock succ = terminatorInst.getSuccessor(0);
       CLabelNode label = (CLabelNode)basicBlocks.get(succ.getAddress()).getEntryNode();
       addEdge(new CAssumeEdge(condition.toASTString(), FileLocation.DUMMY,
-                              brNode, (CFANode)label, condition, true));
+                              brNode, label, condition, true));
 
       succ = terminatorInst.getSuccessor(1);
       label = (CLabelNode)basicBlocks.get(succ.getAddress()).getEntryNode();
       addEdge(new CAssumeEdge(condition.toASTString(), FileLocation.DUMMY,
-                              brNode, (CFANode)label, condition, false));
+                              brNode, label, condition, false));
     }
   }
 

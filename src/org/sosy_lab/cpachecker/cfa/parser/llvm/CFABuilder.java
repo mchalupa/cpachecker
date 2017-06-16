@@ -140,7 +140,7 @@ public class CFABuilder extends LlvmAstVisitor {
   protected FunctionEntryNode visitFunction(final Value pItem) {
     assert pItem.isFunction();
 
-    logger.log(Level.INFO, "Creating function: " + pItem.getValueName());
+    logger.log(Level.FINE, "Creating function: " + pItem.getValueName());
 
     return handleFunctionDefinition(pItem);
   }
@@ -165,7 +165,6 @@ public class CFABuilder extends LlvmAstVisitor {
   @Override
   protected List<CAstNode> visitInstruction(final Value pItem, final String pFunctionName) {
     assert pItem.isInstruction();
-    pItem.dumpValue();
 
     if (pItem.isAllocaInst()) {
       return handleAlloca(pItem, pFunctionName);
@@ -194,6 +193,9 @@ public class CFABuilder extends LlvmAstVisitor {
       throw new UnsupportedOperationException();
     } else if (pItem.isBranchInst()) {
       return null;
+    } else if (pItem.isPHINode()) {
+      // TODO!
+      throw new UnsupportedOperationException();
     } else if (pItem.isInvokeInst()) {
       throw new UnsupportedOperationException();
     } else {
@@ -437,12 +439,12 @@ public class CFABuilder extends LlvmAstVisitor {
     // TODO: Currently we only support flat expressions, no nested ones. Makes this work
     // in the future.
     Value operand1 = pItem.getOperand(0); // First operand
-    logger.log(Level.INFO, "Getting id expression for operand 1");
+    logger.log(Level.FINE, "Getting id expression for operand 1");
     CType op1type = typeConverter.getCType(operand1.typeOf());
     CExpression operand1Exp = getExpression(operand1, op1type, pFunctionName);
     Value operand2 = pItem.getOperand(1); // Second operand
     CType op2type = typeConverter.getCType(operand2.typeOf());
-    logger.log(Level.INFO, "Getting id expression for operand 2");
+    logger.log(Level.FINE, "Getting id expression for operand 2");
     CExpression operand2Exp = getExpression(operand2, op2type, pFunctionName);
 
     CBinaryExpression.BinaryOperator operation;
@@ -616,9 +618,10 @@ public class CFABuilder extends LlvmAstVisitor {
           storageClass,
           varType,
           assignedVar,
-          getQualifiedName(assignedVar, pFunctionName),
           assignedVar,
+          getQualifiedName(assignedVar, pFunctionName),
           pInitializer);
+      assert !variableDeclarations.containsKey(itemId);
       variableDeclarations.put(itemId, newDecl);
     }
 
@@ -628,8 +631,7 @@ public class CFABuilder extends LlvmAstVisitor {
 
   private CExpression getAssignedIdExpression(final Value pItem, final CType pExpectedType,
                                               final String pFunctionName) {
-    logger.log(Level.INFO, "Getting var declaration for item");
-    pItem.dumpValue();
+    logger.log(Level.FINE, "Getting var declaration for item");
     assert variableDeclarations.containsKey(pItem.getAddress())
         : "ID expression has no declaration!";
     CSimpleDeclaration assignedVarDeclaration =
@@ -765,6 +767,7 @@ public class CFABuilder extends LlvmAstVisitor {
         case LLVMIntUGE:
         case LLVMIntSGE:
             operator = BinaryOperator.GREATER_EQUAL;
+            break;
         default:
             throw new UnsupportedOperationException("Unsupported predicate");
     }
