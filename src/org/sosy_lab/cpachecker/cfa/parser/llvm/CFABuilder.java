@@ -644,7 +644,7 @@ public class CFABuilder extends LlvmAstVisitor {
     if (pExpectedType.equals(expressionType)) {
       return idExpression;
 
-    } else if (pExpectedType instanceof CPointerType) {
+    } else if (pointerOf(pExpectedType, expressionType)) {
       CType typePointingTo = ((CPointerType) pExpectedType).getType();
       if (typePointingTo.equals(expressionType)) {
         return new CUnaryExpression(
@@ -656,6 +656,24 @@ public class CFABuilder extends LlvmAstVisitor {
       return new CPointerExpression(getLocation(pItem), pExpectedType, idExpression);
     } else {
       throw new AssertionError("Unhandled types structure");
+    }
+  }
+
+  /**
+   * Returns whether the first param is a pointer of the type of the second parameter.<br />
+   * Examples:
+   * <ul>
+   *   <li>pointerOf(*int, int) -> true</li>
+   *  <li>pointerOf(**int, *int) -> true</li>
+   *  <li>pointerOf(int, int*) -> false</li>
+   *  <li>pointerOf(int, int) -> false</li>
+   *</ul>
+   **/
+  private boolean pointerOf(CType pPotentialPointer, CType pPotentialPointee) {
+    if (pPotentialPointer instanceof CPointerType) {
+      return ((CPointerType) pPotentialPointer).getType().equals(pPotentialPointee);
+    } else {
+      return false;
     }
   }
 
