@@ -82,6 +82,8 @@ import org.sosy_lab.llvm_j.Module;
 import org.sosy_lab.llvm_j.TypeRef;
 import org.sosy_lab.llvm_j.Value;
 import org.sosy_lab.llvm_j.Value.OpCode;
+// FIXME: move stuff from this library to wrappers in llvm-j
+import org.sosy_lab.llvm_j.binding.LLVMLibrary;
 
 /** CFA builder for LLVM IR. Metadata stored in the LLVM IR file is ignored. */
 public class CFABuilder extends LlvmAstVisitor {
@@ -186,7 +188,7 @@ public class CFABuilder extends LlvmAstVisitor {
     } else if (pItem.isCmpInst()) {
       return handleCmpInst(pItem, pFunctionName, pFileName);
     } else if (pItem.isGetElementPtrInst()) {
-      return handleGEP();
+      return handleGEP(pItem, pFunctionName, pFileName);
     } else if (pItem.isSwitchInst()) {
 
       throw new UnsupportedOperationException();
@@ -817,9 +819,119 @@ public class CFABuilder extends LlvmAstVisitor {
         null /* no initializer */);
   }
 
-  private List<CAstNode> handleGEP() {
-    return null;
-    // return getAssignStatement(pItem, ptrexpr, pFunctionName);
+  private CIntegerLiteralExpression getConstIntExpr(Value pItem, long value, final String pFileName) {
+    return new CIntegerLiteralExpression(
+                getLocation(pItem, pFileName),
+                new CSimpleType(
+                    false, false, CBasicType.INT, false, false, false,
+                    false, false, false, false),
+                BigInteger.valueOf(value));
+  }
+
+  private List<CAstNode> handleGEP(Value pItem, final String pFunctionName, final String pFileName)
+    throws LLVMException {
+    LLVMLibrary.LLVMTargetDataRef TD = module.getDataLayout();
+
+    // get the first type in a sequence (this is the type
+    // of memory where the operand 0 points-to)
+    TypeRef type = pItem.getOperand(0).typeOf().getElementType();
+    LLVMLibrary.LLVMTypeRef llvmType = type.type();
+
+    // create a cast to char * so that we can use offset in bytes
+    // and forget all the subsequent types that GEP iterates through
+    Value castOperand = pItem.getOperand(0);
+    CType castType = new CPointerType(false, false,
+                                      new CSimpleType(false, false,
+                                          CBasicType.CHAR, false, false,
+                                          false, false, false,
+                                          false, false));
+    CCastExpression cast =
+        new CCastExpression(
+            getLocation(pItem, pFileName),
+            castType, // type to cast to
+            getExpression(castOperand, // what to cast
+                          typeConverter.getCType(castOperand.typeOf()),
+                          pFileName));
+
+    CExpression expression = cast;
+
+    int n = pItem.getNumOperands();
+    // offsets start at index 1
+    for (int i = 1; i < n; ++i) {
+        Value op = pItem.getOperand(i);
+        if (op.isConstantInt()) {
+            long idx = op.constIntGetSExtValue();
+            int kind = LLVMLibrary.LLVMGetTypeKind(llvmType);
+
+            long off = 0;
+            if (kind == LLVMLibrary.LLVMTypeKind.LLVMStructTypeKind) {
+                off = LLVMLibrary.LLVMOffsetOfElement(TD, llvmType, (int)idx);
+            } else {
+                assert(kind == LLVMLibrary.LLVMTypeKind.LLVMArrayTypeKind ||
+                       kind == LLVMLibrary.LLVMTypeKind.LLVMPointerTypeKind);
+                long pace = LLVMLibrary.LLVMStoreSizeOfType(TD, type.type());
+                off = pace * idx;
+            }
+
+            // we do not need to store 0s
+            if (idx != 0) {
+                assert off != 0;
+
+                 // chain the addition
+                 expression =
+                     new CBinaryExpression(
+                         getLocation(pItem, pFileName),
+                         castType,
+                         castType, // calculation type is expression type in LLVM
+                         expression,
+                         getConstIntExpr(pItem, off, pFileName),
+                         BinaryOperator.PLUS);
+            }
+
+            // update the type if this was not the last index
+            if (i == n - 1)
+                break;
+
+            if (kind == LLVMLibrary.LLVMTypeKind.LLVMStructTypeKind) {
+                type = type.getTypeAtIndex((int)off);
+            } else if (kind == LLVMLibrary.LLVMTypeKind.LLVMArrayTypeKind ||
+                       kind == LLVMLibrary.LLVMTypeKind.LLVMPointerTypeKind) {
+                type = type.getElementType();
+            } else {
+                throw new UnsupportedOperationException("Unsupported aggregate type");
+            }
+        } else {
+            // FIXME: we assume that variable index is the last one.
+            // It may not be true theoretically (for arrays, where we know
+            // even subsequent types without knowing where operand we will point
+            // after variable index)
+            assert(i == n - 1);
+
+            // compute the offset expression
+            long pace = LLVMLibrary.LLVMStoreSizeOfType(TD, type.type());
+            CType opType = typeConverter.getCType(op.typeOf());
+            CBinaryExpression offset =
+                new CBinaryExpression(
+                    getLocation(pItem, pFileName),
+                    opType,
+                    opType, // calculation type is expression type in LLVM
+                    getConstIntExpr(pItem, pace, pFileName),
+                    getExpression(op, opType, pFileName),
+                    BinaryOperator.MULTIPLY);
+
+            // add it to the result
+            expression =
+                new CBinaryExpression(
+                    getLocation(pItem, pFileName),
+                    castType,
+                    castType, // calculation type is expression type in LLVM
+                    expression,
+                    offset,
+                    BinaryOperator.PLUS);
+        }
+    }
+
+    return getAssignStatement(pItem, expression, pFunctionName, pFileName);
   }
 
   private List<CAstNode> handleCmpInst(final Value pItem, String pFunctionName, String pFileName)
