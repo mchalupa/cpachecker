@@ -113,9 +113,12 @@ public class CFABuilder extends LlvmAstVisitor {
   // Function name -> Function declaration
   private Map<String, CFunctionDeclaration> functionDeclarations;
 
-  public CFABuilder(final LogManager pLogger, final MachineModel pMachineModel) {
+  private final Module module;
+
+  public CFABuilder(final LogManager pLogger, final MachineModel pMachineModel, final Module mod) {
     logger = pLogger;
     machineModel = pMachineModel;
+    module = mod;
 
     typeConverter = new LlvmTypeConverter(pMachineModel, pLogger);
 
@@ -127,6 +130,7 @@ public class CFABuilder extends LlvmAstVisitor {
 
   public ParseResult build(final Module pModule, final String pFilename) throws LLVMException {
     visit(pModule, pFilename);
+
     List<Path> input_file = ImmutableList.of(Paths.get(pFilename));
 
     return new ParseResult(functions, cfaNodes, globalDeclarations, input_file);

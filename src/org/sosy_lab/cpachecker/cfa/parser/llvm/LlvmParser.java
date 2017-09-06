@@ -50,14 +50,15 @@ import org.sosy_lab.llvm_j.Module;
 public class LlvmParser implements Parser {
 
   private final LogManager logger;
-  private final CFABuilder cfaBuilder;
+  private CFABuilder cfaBuilder;
+  private final MachineModel machineModel;
 
   private final Timer parseTimer = new Timer();
   private final Timer cfaCreationTimer = new Timer();
 
   public LlvmParser(final LogManager pLogger, final MachineModel pMachineModel) {
     logger = pLogger;
-    cfaBuilder = new CFABuilder(logger, pMachineModel);
+    machineModel = pMachineModel;
   }
 
   @Override
@@ -125,6 +126,7 @@ public class LlvmParser implements Parser {
   }
 
   private ParseResult buildCfa(final Module pModule, final String pFilename) throws LLVMException {
+    cfaBuilder = new CFABuilder(logger, machineModel, pModule);
     return cfaBuilder.build(pModule, pFilename);
   }
 
