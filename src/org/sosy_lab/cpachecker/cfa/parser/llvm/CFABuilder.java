@@ -1410,9 +1410,7 @@ public class CFABuilder {
         new CIdExpression(
             getLocation(pItem, pFileName), expressionType, assignedVarName, assignedVarDeclaration);
 
-    if (expressionType.canBeAssignedFrom(pExpectedType)
-        || expressionType instanceof CArrayType
-        || expressionType instanceof CComplexType) {
+    if (expressionType.canBeAssignedFrom(pExpectedType)) {
       return idExpression;
 
     } else if (pointerOf(pExpectedType, expressionType)) {
@@ -1571,43 +1569,80 @@ public class CFABuilder {
         null /* no initializer */);
   }
 
-  private CExpression createGepExp(final Value pItem, final String pFileName) throws LLVMException {
+  private CType getPointerOfType(final CType type) {
+      return new CPointerType(false, false, type);
+  }
 
-    CType baseType = typeConverter.getCType(pItem.getOperand(0).typeOf());
+  private CExpression Ref(FileLocation fileLocation, CExpression expr) {
+    CType exprType = expr.getExpressionType();
+    /* if this expression starts with *, just remove the * */
+    if (expr instanceof CPointerExpression) {
+        return ((CPointerExpression) expr).getOperand();
+    }
+
+    return new CUnaryExpression(fileLocation, getPointerOfType(exprType),
+                                expr, UnaryOperator.AMPER);
+  }
+
+  private CType getReferencedType(CType type) {
+    assert type instanceof CPointerType;
+    return ((CPointerType) type).getType().getCanonicalType();
+  }
+
+  private CExpression Deref(FileLocation fileLocation, CExpression expr) {
+    CType exprType = expr.getExpressionType();
+    CType derefType = getReferencedType(exprType);
+
+    /* if this is and expression starting with &,
+     * just remove the & */
+    if (expr instanceof CUnaryExpression
+        && ((CUnaryExpression) expr).getOperator() == UnaryOperator.AMPER)
+        return ((CUnaryExpression) expr).getOperand();
+
+    return new CPointerExpression(fileLocation, derefType, expr);
+  }
+
+  private boolean valueIsZero(final Value pItem) {
+    return pItem.isConstantInt() && pItem.constIntGetZExtValue() == 0;
+  }
+
+  private CExpression createGepExp(final Value pItem, final String pFileName) throws LLVMException {
     Value startPointer = pItem.getOperand(0);
     assert typeConverter.getCType(startPointer.typeOf()) instanceof CPointerType
         : "Start of getelementptr is not a pointer";
 
     FileLocation fileLocation = getLocation(pItem, pFileName);
 
-    CType currentType = baseType;
+    CType currentType = typeConverter.getCType(startPointer.typeOf());
     CExpression currentExpression = getExpression(startPointer, currentType, pFileName);
-    currentType = baseType;
+    currentType = currentExpression.getExpressionType();
     assert pItem.getNumOperands() >= 2
         : "Too few operands in GEP operation : " + pItem.getNumOperands();
+
     for (int i = 1; i < pItem.getNumOperands(); i++) {
+      /* get the value of the index */
       Value indexValue = pItem.getOperand(i);
       CExpression index = getExpression(indexValue, CNumericTypes.INT, pFileName);
 
       if (currentType instanceof CPointerType) {
-        currentExpression =
-            new CPointerExpression(
-                fileLocation,
-                currentType,
-                new CBinaryExpression(
+        if (valueIsZero(indexValue)) {
+            /* if we do not shift the pointer, just dereference the type (and expression) */
+            currentExpression = Deref(fileLocation, currentExpression);
+        } else {
+          currentExpression =
+            Deref(fileLocation,
+                  new CBinaryExpression(
                     fileLocation,
                     currentType,
                     currentType,
                     currentExpression,
                     index,
                     BinaryOperator.PLUS));
-        currentType = ((CPointerType) currentType).getType();
-
+        }
       } else if (currentType instanceof CArrayType) {
         currentExpression =
-            new CArraySubscriptExpression(fileLocation, currentType, currentExpression, index);
-        currentType = ((CArrayType) currentType).getType();
-
+                new CArraySubscriptExpression(fileLocation, currentType,
+                                              currentExpression, index);
       } else if (currentType instanceof CCompositeType) {
         if (!(index instanceof CIntegerLiteralExpression)) {
           throw new UnsupportedOperationException(
@@ -1618,11 +1653,16 @@ public class CFABuilder {
             ((CCompositeType) currentType).getMembers().get(memberIndex);
         String fieldName = field.getName();
         currentExpression =
-            new CFieldReference(fileLocation, currentType, fieldName, currentExpression, false);
-        currentType = field.getType();
+                new CFieldReference(fileLocation, currentType, fieldName,
+                                    currentExpression, false);
       }
+
+      /* update the expression type */
+      currentType = currentExpression.getExpressionType();
     }
-    return currentExpression;
+
+    /* we want pointer to the element */
+    return Ref(fileLocation, currentExpression);
   }
 
   private List<CAstNode> handleCmpInst(final Value pItem, String pFunctionName, String pFileName)
