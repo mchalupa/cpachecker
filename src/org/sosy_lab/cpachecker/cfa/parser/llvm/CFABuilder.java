@@ -748,11 +748,13 @@ public class CFABuilder {
         calledFunction = calledFunction.getOperand(0);
     }
 
-    // we must have a function now
-    assert(calledFunction.isFunction());
+    // we must have a function now, otherwise it is a call
+    // via function pointer
+    if (calledFunction.isFunction()) {
+      functionName = calledFunction.getValueName();
+      functionDeclaration = functionDeclarations.get(functionName);
+    }
 
-    functionName = calledFunction.getValueName();
-    functionDeclaration = functionDeclarations.get(functionName);
     if (functionDeclaration == null) {
       logger.logf(
           Level.WARNING,
