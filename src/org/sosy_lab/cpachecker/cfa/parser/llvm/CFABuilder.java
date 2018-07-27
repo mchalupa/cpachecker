@@ -734,6 +734,16 @@ public class CFABuilder {
       throws LLVMException {
     assert pItem.isCallInst();
 
+    if (pItem.isIntrinsicInst()) {
+        if(pItem.isMemIntrinsic()) {
+            logger.logf(Level.WARNING, "Unhandled memory intrinsic!");
+        }
+     //   logger.logf(Level.FINE, "Skipping intrinsic function call");
+        pItem.dump();
+
+    //    return null;
+    }
+
     FileLocation loc = getLocation(pItem, pFileName);
     CType returnType = typeConverter.getCType(pItem.typeOf());
     int argumentCount = pItem.getNumArgOperands();
@@ -767,7 +777,10 @@ public class CFABuilder {
 
     if (functionDeclaration == null) {
       // Try to derive a function type from the call
-      List<CType> parameterTypes = new ArrayList<>(argumentCount - 1);
+      pItem.dump();
+      // for normal CallInst the numer of parameters is argumentCount - 1,
+      // but for intrinsic calls it is just argumentCount, so let's use that
+      List<CType> parameterTypes = new ArrayList<>(argumentCount);
       for (int i = 0; i < argumentCount; i++) {
         Value functionArg = pItem.getArgOperand(i);
         assert functionArg.isConstant()
