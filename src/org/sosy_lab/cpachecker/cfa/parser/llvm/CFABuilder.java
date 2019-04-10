@@ -1452,12 +1452,12 @@ public class CFABuilder {
         return new CUnaryExpression(
             location, pExpectedType, expression, UnaryOperator.AMPER);
       } else {
-        throw new AssertionError("Unhandled type structure");
+        throw new AssertionError("Unhandled type structure: " + expressionType);
       }
     } else if (expressionType instanceof CPointerType) {
       return new CPointerExpression(location, pExpectedType, expression);
     } else {
-      throw new AssertionError("Unhandled types structure");
+      throw new AssertionError("Unhandled type structure: " + expressionType);
     }
   }
 
