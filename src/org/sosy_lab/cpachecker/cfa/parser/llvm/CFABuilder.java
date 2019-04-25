@@ -1184,8 +1184,14 @@ public class CFABuilder {
       long constantValue = pItem.constIntGetSExtValue();
       // In LLVM, literals of arbitrary size can be given.
       // Since we want to map this to C, let's just use the largest integer type available to us
+      CType type = null;
+      if (constantValue < 0) {
+          type = CNumericTypes.LONG_LONG_INT;
+      } else {
+          type = CNumericTypes.UNSIGNED_LONG_LONG_INT;
+      }
       return new CIntegerLiteralExpression(
-          getLocation(pItem, pFileName), CNumericTypes.UNSIGNED_LONG_LONG_INT, BigInteger.valueOf(constantValue));
+          getLocation(pItem, pFileName), type, BigInteger.valueOf(constantValue));
 
     } else if (pItem.isConstantPointerNull()) {
       return new CCastExpression(location, pExpectedType,
