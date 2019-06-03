@@ -1458,6 +1458,11 @@ public class CFABuilder {
     return variableDeclarations.get(itemId);
   }
 
+  private CType getReferencedType(CType type) {
+    assert type instanceof CPointerType;
+    return ((CPointerType) type).getType().getCanonicalType();
+  }
+
   private CExpression castToExpectedType(CExpression expression, final CType pExpectedType,
                                          final FileLocation location) {
     CType expressionType = expression.getExpressionType();
@@ -1475,6 +1480,19 @@ public class CFABuilder {
       }
     } else if (expressionType instanceof CPointerType) {
       return getDereference(location, expression);
+    } else if (expressionType instanceof CArrayType) {
+      /* Pointer to an array is the pointer to the beginning of the array */
+      if (pExpectedType instanceof CPointerType) {
+        if(getReferencedType(pExpectedType).equals(
+           ((CArrayType) expressionType).getType().getCanonicalType())) {
+          return expression;
+        }
+	  }
+      throw new AssertionError("Unhandled cast of array type " + expressionType +
+                               " to " + pExpectedType);
+    } else if (expressionType instanceof CFunctionType) {
+      logger.logf(Level.WARNING, "Using incompatible function pointer");
+      return expression;
     } else {
       throw new AssertionError("Unhandled type structure: " + expressionType);
     }
@@ -1666,11 +1684,6 @@ public class CFABuilder {
 
     return new CUnaryExpression(fileLocation, getPointerOfType(exprType),
                                 expr, UnaryOperator.AMPER);
-  }
-
-  private CType getReferencedType(CType type) {
-    assert type instanceof CPointerType;
-    return ((CPointerType) type).getType().getCanonicalType();
   }
 
   private CExpression getDereference(FileLocation fileLocation, CExpression expr) {
